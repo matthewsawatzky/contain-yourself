@@ -19,7 +19,7 @@ services:
       INSTALLED_APPS_DIRECTORY: /data/apps
       APP_STORE_DIRECTORY: /data/app-store
       APP_STORE_INDEX_URL: ${APP_STORE_INDEX_URL:-https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json}
-      CONTROLLER_VERSION: ${WM_VERSION:-v0.4.0}
+      CONTROLLER_VERSION: ${WM_VERSION:-v0.4.1}
       TEMPLATES_DIRECTORY: /config/templates
       VPN_PROFILES_DIRECTORY: /data/vpn-profiles
       VPN_ENCRYPTION_KEY_FILE: /data/vpn-profiles.key

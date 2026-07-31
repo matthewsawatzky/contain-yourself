@@ -531,7 +531,7 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 			MemoryBytes: int64(app.MemoryMB) * 1024 * 1024,
 			NanoCPUs:    int64(app.CPU * 1_000_000_000), PIDLimit: request.PIDLimit,
 			ShmSizeBytes: int64(app.ShmSizeMB) * 1024 * 1024,
-			CapAdd:       app.Capabilities, Mounts: mounts, Ports: []int{app.InternalPort},
+			CapAdd:       app.Capabilities, Mounts: mounts,
 		}); err != nil {
 			return fmt.Errorf("create app %s: %w", app.ID, err)
 		}

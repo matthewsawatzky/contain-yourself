@@ -169,6 +169,17 @@ func TestProvisionAllowsAppsToReusePorts(t *testing.T) {
 	}
 }
 
+func TestContainerNetworkNamespaceRejectsExposedPorts(t *testing.T) {
+	engine := &Engine{}
+	err := engine.CreateContainer(t.Context(), ContainerConfig{
+		NetworkMode: "container:wm-ws-abcdef-net-browser",
+		Ports:       []int{3000},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot expose ports") {
+		t.Fatalf("CreateContainer error = %v", err)
+	}
+}
+
 func testWireGuardConfig() string {
 	return `[Interface]
 PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

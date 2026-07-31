@@ -133,6 +133,9 @@ type Mount struct {
 }
 
 func (e *Engine) CreateContainer(ctx context.Context, config ContainerConfig) error {
+	if strings.HasPrefix(config.NetworkMode, "container:") && len(config.Ports) > 0 {
+		return errors.New("containers sharing another container's network namespace cannot expose ports")
+	}
 	env := make([]string, 0, len(config.Environment))
 	for key, value := range config.Environment {
 		env = append(env, key+"="+value)
