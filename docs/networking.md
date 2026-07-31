@@ -31,8 +31,11 @@ starting app containers and probes each declared app health URL.
 
 The controller sends the selected configuration over the authenticated
 controller-to-worker connection. The worker creates the Gluetun container,
-copies the configuration to `/gluetun/wireguard/wg0.conf` before it starts,
-and never places the WireGuard private key in Docker environment variables.
+copies the mode-`0600` configuration to
+`/tmp/workstation-manager-wireguard.conf` before it starts, points Gluetun's
+`WIREGUARD_CONF_SECRETFILE` at it, and never places the WireGuard private key
+in Docker environment variables. Workstation applications share the gateway's
+network namespace, not its filesystem.
 
 ## Reverse proxy and wildcard DNS
 

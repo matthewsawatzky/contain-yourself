@@ -39,8 +39,9 @@ commands such as `PreUp` and `PostUp`, unknown directives, invalid keys,
 split-tunnel-only routes, and hostname endpoints. It encrypts the result with
 AES-GCM. At provisioning time it decrypts the selected profile and sends it
 over the authenticated internal worker connection. The worker validates it
-again and uploads it to the new Gluetun container as
-`/gluetun/wireguard/wg0.conf` before start.
+again and uploads it to the new Gluetun container as the mode-`0600` file
+`/tmp/workstation-manager-wireguard.conf` before start. Gluetun reads that path
+through `WIREGUARD_CONF_SECRETFILE`.
 
 Gluetun's custom WireGuard setup currently requires an endpoint IP address
 rather than a hostname. See the upstream

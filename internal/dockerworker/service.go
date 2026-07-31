@@ -27,6 +27,12 @@ type Service struct {
 	log    *slog.Logger
 }
 
+const (
+	wireGuardSecretDirectory = "/tmp"
+	wireGuardSecretFilename  = "workstation-manager-wireguard.conf"
+	wireGuardSecretPath      = wireGuardSecretDirectory + "/" + wireGuardSecretFilename
+)
+
 var resourceID = regexp.MustCompile(`^ws-[a-z0-9]{6,20}$`)
 
 func NewService(cfg config.Worker, engine *Engine, logger *slog.Logger) *Service {
@@ -348,15 +354,16 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 			ports = append(ports, app.InternalPort)
 		}
 		sort.Ints(ports)
-		vpnEnvironment := map[string]string{
-			"VPN_SERVICE_PROVIDER": "custom",
-			"VPN_TYPE":             "wireguard",
-		}
 		portStrings := make([]string, 0, len(ports))
 		for _, port := range ports {
 			portStrings = append(portStrings, strconv.Itoa(port))
 		}
-		vpnEnvironment["FIREWALL_INPUT_PORTS"] = strings.Join(portStrings, ",")
+		vpnEnvironment := map[string]string{
+			"VPN_SERVICE_PROVIDER":      "custom",
+			"VPN_TYPE":                  "wireguard",
+			"WIREGUARD_CONF_SECRETFILE": wireGuardSecretPath,
+			"FIREWALL_INPUT_PORTS":      strings.Join(portStrings, ","),
+		}
 		if err := s.engine.CreateContainer(ctx, ContainerConfig{
 			Name: gatewayName, Image: s.config.VPNImage, Environment: vpnEnvironment,
 			Labels: baseLabels(request.WorkstationID, "vpn"), NetworkMode: s.config.ManagementNetwork,
@@ -369,8 +376,8 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		}); err != nil {
 			return fmt.Errorf("create VPN gateway: %w", err)
 		}
-		if err := s.engine.CopyFile(ctx, gatewayName, "/gluetun/wireguard",
-			"wg0.conf", []byte(request.VPNProfile.WireGuardConfig), 0o600); err != nil {
+		if err := s.engine.CopyFile(ctx, gatewayName, wireGuardSecretDirectory,
+			wireGuardSecretFilename, []byte(request.VPNProfile.WireGuardConfig), 0o600); err != nil {
 			return fmt.Errorf("inject WireGuard profile: %w", err)
 		}
 		if err := s.engine.ContainerAction(ctx, gatewayName, "start"); err != nil {

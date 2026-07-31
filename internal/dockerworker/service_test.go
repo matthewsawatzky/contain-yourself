@@ -104,6 +104,15 @@ func TestVPNProfileMustContainSafeWireGuardConfiguration(t *testing.T) {
 	}
 }
 
+func TestWireGuardConfigurationUsesGluetunSecretFile(t *testing.T) {
+	if wireGuardSecretPath != "/tmp/workstation-manager-wireguard.conf" {
+		t.Fatalf("WireGuard secret path = %q", wireGuardSecretPath)
+	}
+	if wireGuardSecretDirectory+"/"+wireGuardSecretFilename != wireGuardSecretPath {
+		t.Fatal("WireGuard copy target and Gluetun secret path diverged")
+	}
+}
+
 func testWireGuardConfig() string {
 	return `[Interface]
 PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
