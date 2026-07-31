@@ -1,0 +1,12 @@
+schema_version: 1
+id: browser
+name: Private browser
+description: Temporary remote browser forced through the configured VPN
+workspace_image: alpine:3.21
+apps: [web-desktop, files, browser]
+vpn_required: true
+persistent: false
+cpu: 2
+memory_mb: 3072
+pid_limit: 512
+expires_hours: 8

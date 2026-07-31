@@ -1,0 +1,12 @@
+schema_version: 1
+id: developer-local
+name: Developer (direct internet)
+description: Persistent terminal, files, and code editor without mandatory VPN routing
+workspace_image: alpine:3.21
+apps: [web-desktop, terminal, files, code]
+vpn_required: false
+persistent: true
+cpu: 2
+memory_mb: 4096
+pid_limit: 512
+expires_hours: 0

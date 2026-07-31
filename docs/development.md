@@ -1,0 +1,91 @@
+# Development
+
+Requires Go 1.24+, Docker, and Compose.
+
+```bash
+go test ./...
+go vet ./...
+docker compose --env-file .env config --quiet
+./scripts/dev-up.sh
+```
+
+`dev-up.sh` creates `.env`, generates a worker token, records the current host
+UID/GID for writable bind mounts, creates `data/`, builds both local images,
+and starts Compose.
+
+No GitHub Release is involved in this workflow. A normal branch push contains
+the entire buildable project. From a fresh clone:
+
+```bash
+./scripts/dev-build.sh  # build only
+./scripts/dev-up.sh     # build and run
+```
+
+Both use the current Docker platform. To request a different platform from a
+capable BuildKit installation:
+
+```bash
+DOCKER_DEFAULT_PLATFORM=linux/arm64 ./scripts/dev-build.sh
+```
+
+Useful targets:
+
+```bash
+make fmt
+make test
+make vet
+make compose-config
+make logs
+```
+
+Package responsibilities are documented in
+[architecture.md](architecture.md). Keep HTTP handlers thin, state transitions
+in `internal/workstations`, database writes transactional, and all Docker
+details under `internal/dockerworker`.
+
+## Adding a migration
+
+Append an immutable migration string in `internal/database/database.go`, add a
+matching numbered reference file in `migrations/`, and test both a fresh
+database and an upgrade fixture. Never edit a released migration.
+
+## Adding an app
+
+1. Add `apps/<id>/app.yaml` and local icon.
+2. Pin a version tag or digest.
+3. Add the exact image to `WORKER_ALLOWED_IMAGES`.
+4. Add it to one or more templates.
+5. Add manifest rejection and Docker integration tests.
+6. Verify base-path behavior, WebSockets, health, shared workspace and VPN
+   egress before enabling it.
+
+## Adding a template
+
+Add `templates/<id>.yaml`. Only select valid registered apps. Resource defaults
+must fit the host and every app's individual limits must fit the workstation.
+
+## Test tiers
+
+- Unit: manifests, templates, state, sessions, shares, hostname, log decoding
+  and worker validation.
+- Docker integration: pull/provision/health/proxy/persistence/kill switch.
+- End to end: setup, create, app interaction, stop/start, share and delete.
+
+Docker tests should use a separate daemon or uniquely labelled resources and
+must always clean up their exact IDs.
+
+## Source and deployment layout
+
+- `cmd/`, `internal/`, `pkg/`, `web/`, `migrations/`: Go application source.
+- `apps/`, `templates/`: reviewed default catalogue shipped in releases.
+- `build/`: development and release image definitions.
+- `deploy/`: production Compose file using versioned GHCR images.
+- `scripts/`: development build/startup, installer, management, backup, and
+  release bundle tooling.
+- `.github/`: CI, multi-architecture image publishing, and GitHub Releases.
+
+Build a local release asset without publishing:
+
+```bash
+make release VERSION=v0.1.0
+```

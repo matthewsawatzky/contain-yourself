@@ -1,0 +1,12 @@
+schema_version: 1
+id: browser-local
+name: Browser (direct internet)
+description: Temporary hardened remote browser without mandatory VPN routing
+workspace_image: alpine:3.21
+apps: [web-desktop, files, browser]
+vpn_required: false
+persistent: false
+cpu: 2
+memory_mb: 3072
+pid_limit: 512
+expires_hours: 8

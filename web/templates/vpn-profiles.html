@@ -1,0 +1,50 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <section class="hero">
+    <div><div class="eyebrow">Networking</div><h1>VPN profiles</h1><p class="lead">Use organization profiles or bring your own WireGuard connection.</p></div>
+  </section>
+  {{template "flash" .}}
+  <div class="dashboard-grid">
+    <section>
+      {{if .VPNProfiles}}
+      <div class="cards">
+        {{range .VPNProfiles}}
+        <article class="ws-card">
+          <div class="card-top"><span class="machine-icon">⌁</span><span class="status">{{if .Enabled}}enabled{{else}}disabled{{end}}</span></div>
+          <h2>{{.Name}}</h2>
+          <code>{{.Visibility}} · {{.Endpoint}}</code>
+          <div class="metrics">
+            {{if .AutoAssign}}<span>Available by default</span>{{end}}
+            {{if .OwnerUserID}}<span>Bring your own</span>{{end}}
+          </div>
+          {{if canManageVPN . $.User}}
+          <form method="post" action="/vpn-profiles/{{.ID}}/enabled">
+            <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+            <button class="secondary">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+          </form>
+          {{end}}
+        </article>
+        {{end}}
+      </div>
+      {{else}}
+      <div class="empty"><h2>No VPN profiles</h2><p>Create one to use VPN-required workstation templates.</p></div>
+      {{end}}
+    </section>
+    <aside class="panel">
+      <div class="eyebrow">New profile</div>
+      <h2>Add WireGuard profile</h2>
+      <form method="post" action="/vpn-profiles" class="stack">
+        <label>Name<input name="name" required maxlength="80" placeholder="London WireGuard"></label>
+        {{if .User.IsAdmin}}
+        <label>Availability<select name="visibility"><option value="global">Everyone</option><option value="private">Only me</option></select></label>
+        <label class="check"><input type="checkbox" name="auto_assign" value="true"><span>Recommend to all users by default</span></label>
+        {{else}}<input type="hidden" name="visibility" value="private">{{end}}
+        <label>WireGuard configuration<textarea name="wireguard_config" required rows="14" maxlength="65536" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = 1.2.3.4:51820&#10;AllowedIPs = 0.0.0.0/0"></textarea></label>
+        <button class="primary">Create profile</button>
+      </form>
+      <p class="fine">Profiles are validated and encrypted under the controller data directory. Script directives and non-IP endpoints are rejected.</p>
+    </aside>
+  </div>
+</main>
+{{template "foot" .}}

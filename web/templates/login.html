@@ -1,0 +1,16 @@
+{{template "head" .}}
+<main class="auth-shell">
+  <section class="auth-card">
+    <div class="eyebrow">Private infrastructure</div>
+    <h1>Welcome back</h1>
+    <p class="lead">Sign in to manage your isolated workstations.</p>
+    {{template "flash" .}}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="next" value="{{.Next}}">
+      <label>Username<input name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary">Sign in</button>
+    </form>
+  </section>
+</main>
+{{template "foot" .}}

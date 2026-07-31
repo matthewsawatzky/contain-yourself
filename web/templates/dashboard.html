@@ -1,0 +1,48 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <section class="hero">
+    <div><div class="eyebrow">Controller</div><h1>Your workstations</h1><p class="lead">Create an isolated workspace from a reviewed template.</p></div>
+    <div class="health-chip"><i></i> Controller online</div>
+  </section>
+  {{template "flash" .}}
+  <div class="dashboard-grid">
+    <section>
+      {{if .Workstations}}
+      <div class="cards">
+        {{range .Workstations}}
+        <a class="ws-card" href="/workstations/{{.ID}}">
+          <div class="card-top"><span class="machine-icon">⌁</span><span class="status status-{{.State}}">{{.State}}</span></div>
+          <h2>{{.Name}}</h2>
+          <code>{{.Hostname}}</code>
+          <div class="metrics"><span>{{.CPULimit}} CPU</span><span>{{.MemoryLimitMB}} MB</span>{{if .VPNRequired}}<span>VPN required</span>{{end}}</div>
+        </a>
+        {{end}}
+      </div>
+      {{else}}
+      <div class="empty"><div class="empty-icon">⌁</div><h2>No workstations yet</h2><p>Choose a template to create your first isolated environment.</p></div>
+      {{end}}
+    </section>
+    <aside class="panel">
+      <div class="eyebrow">New workstation</div>
+      <h2>Launch a machine</h2>
+      <form method="post" action="/workstations" class="stack">
+        <label>Name<input name="name" required maxlength="80" placeholder="Research workspace"></label>
+        <label>Template<select name="template_id" data-template-select>{{range .Templates}}<option value="{{.ID}}" data-apps="{{range .Apps}}{{.}} {{end}}" data-vpn="{{.VPNRequired}}">{{.Name}}</option>{{end}}</select></label>
+        <label data-vpn-profile>VPN profile
+          <select name="vpn_profile_id">
+            <option value="">Select a profile</option>
+            {{range .VPNProfiles}}<option value="{{.ID}}">{{if .AutoAssign}}★ {{end}}{{.Name}} · {{.Visibility}}</option>{{end}}
+          </select>
+        </label>
+        {{if not .VPNProfiles}}<p class="fine" data-vpn-profile>No enabled profiles. <a href="/vpn-profiles">Bring your own WireGuard profile</a>.</p>{{end}}
+        <fieldset><legend>Apps</legend>
+          {{range .Apps}}{{if and (not .Error) .Manifest.Desktop.Visible}}<label class="check"><input type="checkbox" name="apps" value="{{.Manifest.ID}}"><span>{{.Manifest.Name}}</span></label>{{end}}{{end}}
+        </fieldset>
+        <button class="primary">Create workstation</button>
+      </form>
+      <p class="fine">Container images are pulled by the isolated worker. VPN templates fail closed without a valid accessible WireGuard profile.</p>
+    </aside>
+  </div>
+</main>
+{{template "foot" .}}

@@ -1,0 +1,12 @@
+schema_version: 1
+id: terminal
+name: Terminal
+description: A small persistent terminal workstation without mandatory VPN
+workspace_image: alpine:3.21
+apps: [web-desktop, terminal]
+vpn_required: false
+persistent: true
+cpu: 1
+memory_mb: 1024
+pid_limit: 256
+expires_hours: 0

@@ -1,0 +1,60 @@
+.telemetry {
+  margin-top: 24px;
+}
+
+.usage-table {
+  overflow-x: auto;
+}
+
+.usage-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.5fr) repeat(4, minmax(90px, 1fr));
+  gap: 14px;
+  min-width: 720px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  align-items: center;
+  font-size: .8rem;
+}
+
+.usage-row > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.usage-head {
+  color: var(--muted);
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.log-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.log-list details {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #091525;
+}
+
+.log-list summary {
+  cursor: pointer;
+  padding: 11px 14px;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.log-list pre {
+  max-height: 340px;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+  color: #b9e6d6;
+  font: .75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+}

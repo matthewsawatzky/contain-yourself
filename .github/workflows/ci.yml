@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format
+        run: test -z "$(gofmt -l cmd internal pkg web)"
+      - name: Test
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Validate shell scripts
+        run: |
+          sh -n scripts/*.sh
+          test -x scripts/install.sh
+          test -x scripts/manage.sh
+          test -x scripts/release.sh
+      - name: Validate development Compose file
+        run: docker compose --env-file .env.example config --quiet
+      - name: Build release bundle
+        run: ./scripts/release.sh v0.0.0 dist
+      - name: Validate release Compose file
+        run: |
+          WM_IMAGE_REPOSITORY=ghcr.io/example/workstation-manager \
+          WM_VERSION=v0.0.0 \
+          CONTROLLER_UID=1000 \
+          CONTROLLER_GID=1000 \
+          DATA_DIRECTORY=/tmp/workstation-manager-data \
+          CONFIG_DIRECTORY=/tmp/workstation-manager-config \
+          WORKER_TOKEN=ci-worker-token-0123456789abcdef \
+          docker compose -f deploy/compose.yaml config --quiet

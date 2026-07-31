@@ -1,0 +1,17 @@
+{{template "head" .}}
+<main class="auth-shell">
+  <section class="auth-card">
+    <div class="eyebrow">First run</div>
+    <h1>Create the administrator</h1>
+    <p class="lead">This account controls workstation creation, sharing, and recovery.</p>
+    {{template "flash" .}}
+    <form method="post" action="/setup" class="stack">
+      <label>Username<input name="username" autocomplete="username" required maxlength="64"></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <button class="primary">Create administrator</button>
+    </form>
+    <p class="fine">Use at least 12 characters. Passwords are stored with PBKDF2-HMAC-SHA256 and a unique salt.</p>
+  </section>
+</main>
+{{template "foot" .}}

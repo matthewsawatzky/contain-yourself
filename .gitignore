@@ -1,0 +1,9 @@
+.env
+controller.db
+controller.db-*
+backups/
+data/
+dist/
+coverage.out
+*.log
+.DS_Store

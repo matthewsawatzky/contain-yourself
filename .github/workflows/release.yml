@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test release commit
+        run: |
+          go test ./...
+          go vet ./...
+          sh -n scripts/*.sh
+      - name: Resolve release names
+        id: names
+        shell: bash
+        run: |
+          echo "repository=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish controller
+        id: controller
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          file: build/controller.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ steps.names.outputs.repository }}-controller:${{ steps.names.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - name: Build and publish worker
+        id: worker
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          file: build/worker.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ steps.names.outputs.repository }}-worker:${{ steps.names.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - name: Attest controller image
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ steps.names.outputs.repository }}-controller
+          subject-digest: ${{ steps.controller.outputs.digest }}
+          push-to-registry: true
+      - name: Attest worker image
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ steps.names.outputs.repository }}-worker
+          subject-digest: ${{ steps.worker.outputs.digest }}
+          push-to-registry: true
+      - name: Build release assets
+        shell: bash
+        run: |
+          ./scripts/release.sh "$GITHUB_REF_NAME" dist
+          sed "s|@GITHUB_REPOSITORY@|$GITHUB_REPOSITORY|g" \
+            scripts/install.sh >dist/install.sh
+          chmod 755 dist/install.sh
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/workstation-manager-bundle.tar.gz \
+            dist/workstation-manager-bundle.tar.gz.sha256 \
+            dist/install.sh \
+            --verify-tag \
+            --generate-notes \
+            --title "Workstation Manager $GITHUB_REF_NAME"

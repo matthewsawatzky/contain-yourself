@@ -1,0 +1,70 @@
+name: workstation-manager
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: build/controller.Dockerfile
+    user: "${CONTROLLER_UID:-1000}:${CONTROLLER_GID:-1000}"
+    ports:
+      - "${CONTROLLER_BIND:-127.0.0.1}:8080:8080"
+    volumes:
+      - ${DATA_DIRECTORY:-./data}:/data
+      - ${CONFIG_DIRECTORY:-.}/apps:/config/apps:ro
+      - ${CONFIG_DIRECTORY:-.}/templates:/config/templates:ro
+    environment:
+      CONTROLLER_LISTEN: 0.0.0.0:8080
+      DATABASE_PATH: /data/controller.db
+      APPS_DIRECTORY: /config/apps
+      TEMPLATES_DIRECTORY: /config/templates
+      VPN_PROFILES_DIRECTORY: /data/vpn-profiles
+      VPN_ENCRYPTION_KEY_FILE: /data/vpn-profiles.key
+      WORKER_URL: http://docker-worker:8090
+      WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
+      PUBLIC_BASE_DOMAIN: ${PUBLIC_BASE_DOMAIN:-}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      SESSION_LIFETIME: ${SESSION_LIFETIME:-24h}
+      RECONCILE_ON_STARTUP: "true"
+    depends_on:
+      docker-worker:
+        condition: service_healthy
+    networks:
+      - management
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  docker-worker:
+    build:
+      context: .
+      dockerfile: build/worker.Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8090"
+    environment:
+      WORKER_LISTEN: 0.0.0.0:8090
+      WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
+      MANAGEMENT_NETWORK: workstation-manager
+      WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
+      VPN_IMAGE: ${VPN_IMAGE:-qmcgaw/gluetun:v3.40.0}
+    networks:
+      - management
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8090/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  management:
+    name: workstation-manager
+    internal: false

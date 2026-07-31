@@ -1,0 +1,86 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <a class="back" href="/">← All workstations</a>
+  {{template "flash" .}}
+  <section class="machine-head">
+    <div><div class="eyebrow">{{.Workstation.ID}}</div><h1>{{.Workstation.Name}}</h1><code>{{.Workstation.Hostname}}</code></div>
+    <span class="status large status-{{.Workstation.State}}">{{.Workstation.State}}</span>
+  </section>
+  {{if .Workstation.ErrorMessage}}<div class="alert error">{{.Workstation.ErrorMessage}}</div>{{end}}
+  <div class="detail-grid">
+    <section class="panel wide">
+      <div class="section-head"><div><div class="eyebrow">Workspace</div><h2>Applications</h2></div></div>
+      <div class="app-grid">
+      {{range .Workstation.Apps}}
+        <a class="app-tile" href="{{if eq .AppID "web-desktop"}}/workstations/{{$.Workstation.ID}}/desktop{{else}}/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/{{end}}">
+          <span class="app-glyph">{{slice .AppID 0 1}}</span>
+          <span><b>{{.AppID}}</b><small>{{.State}} · port {{.InternalPort}}</small></span>
+        </a>
+      {{end}}
+      </div>
+    </section>
+    <aside class="panel">
+      <div class="eyebrow">Controls</div><h2>Lifecycle</h2>
+      <div class="actions">
+        <form method="post" action="/workstations/{{.Workstation.ID}}/actions/start"><button>Start</button></form>
+        <form method="post" action="/workstations/{{.Workstation.ID}}/actions/stop"><button>Stop</button></form>
+        <form method="post" action="/workstations/{{.Workstation.ID}}/actions/restart"><button>Restart</button></form>
+        <form method="post" action="/workstations/{{.Workstation.ID}}/actions/update"><button>Update</button></form>
+        <form method="post" action="/workstations/{{.Workstation.ID}}/actions/delete" data-confirm="Delete this workstation and all of its volumes?"><button class="danger">Delete</button></form>
+      </div>
+      <dl>
+        <div><dt>VPN policy</dt><dd>{{if .Workstation.VPNRequired}}Required{{else}}Optional{{end}}</dd></div>
+        <div><dt>Persistence</dt><dd>{{if .Workstation.Persistent}}Persistent{{else}}Temporary{{end}}</dd></div>
+        <div><dt>Resources</dt><dd>{{.Workstation.CPULimit}} CPU / {{.Workstation.MemoryLimitMB}} MB</dd></div>
+      </dl>
+    </aside>
+  </div>
+  <section class="panel telemetry">
+    <div class="eyebrow">Live Docker sample</div><h2>Resource usage</h2>
+    <div class="usage-table">
+      <div class="usage-row usage-head"><span>Resource</span><span>CPU</span><span>Memory</span><span>PIDs</span><span>Network RX/TX</span></div>
+      {{range .Usage}}<div class="usage-row">
+        <span><b>{{if .AppID}}{{.AppID}}{{else}}{{.Kind}}{{end}}</b><small>{{.State}}</small></span>
+        <span>{{printf "%.1f" .CPUPercent}}%</span>
+        <span>{{printf "%.1f" .MemoryUsageMB}} / {{printf "%.0f" .MemoryLimitMB}} MB</span>
+        <span>{{.PIDs}}</span>
+        <span>{{.NetworkRXBytes}} / {{.NetworkTXBytes}}</span>
+      </div>{{else}}<p class="muted">No running Docker resources to sample.</p>{{end}}
+    </div>
+    <div class="log-list">
+      {{range .Workstation.Apps}}{{if ne .AppID "web-desktop"}}<details data-log-url="/api/v1/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/logs?tail=200"><summary>{{.AppID}} logs</summary><pre>Open to load recent logs.</pre></details>{{end}}{{end}}
+    </div>
+  </section>
+  <section class="panel events"><div class="eyebrow">Audit trail</div><h2>Recent events</h2>
+    {{range .Events}}<div class="event"><time>{{.CreatedAt.Format "02 Jan 15:04"}}</time><span>{{.Message}}</span><code>{{.Type}}</code></div>{{else}}<p class="muted">No events recorded.</p>{{end}}
+  </section>
+  <section class="panel sharing">
+    <div class="section-head"><div><div class="eyebrow">Scoped access</div><h2>Sharing</h2></div></div>
+    {{if .ShareURL}}<div class="share-secret"><b>Share link created</b><p>This secret is shown once. Copy it before leaving this page.</p><input readonly value="{{.ShareURL}}" data-copy-value><button type="button" data-copy>Copy link</button></div>{{end}}
+    <div class="share-layout">
+      <form method="post" action="/workstations/{{.Workstation.ID}}/shares" class="stack">
+        <label>Named recipient<input name="recipient" maxlength="128" placeholder="Optional name"></label>
+        <div class="form-row"><label>Expires after (hours)<input type="number" name="expires_hours" value="24" min="0" max="8760"></label><label>Maximum redemptions<input type="number" name="max_uses" value="1" min="0" max="10000"></label></div>
+        <fieldset><legend>Permissions</legend>
+          <label class="check"><input type="checkbox" name="permissions" value="open-apps" checked><span>Open non-terminal apps</span></label>
+          <label class="check"><input type="checkbox" name="permissions" value="terminal-control"><span>Control terminal</span></label>
+          <label class="check"><input type="checkbox" name="permissions" value="upload-files"><span>Upload/change files</span></label>
+          <label class="check"><input type="checkbox" name="permissions" value="download-files"><span>Download/view files</span></label>
+          <label class="check"><input type="checkbox" name="permissions" value="restart-workstation"><span>Restart workstation</span></label>
+          <label class="check"><input type="checkbox" name="permissions" value="stop-workstation"><span>Stop workstation</span></label>
+        </fieldset>
+        <button>Create share link</button>
+      </form>
+      <div class="share-list">
+      {{range .Shares}}
+        <div class="share-row {{if .RevokedAt}}revoked{{end}}">
+          <div><b>{{if .NamedRecipient}}{{.NamedRecipient}}{{else}}Unnamed recipient{{end}}</b><small>{{range .Permissions}}{{.}} {{end}}</small><small>Uses {{.UseCount}}{{if .MaxUses}} / {{.MaxUses}}{{end}}{{if .ExpiresAt}} · expires {{.ExpiresAt.Format "02 Jan 2006 15:04"}}{{end}}</small></div>
+          {{if .RevokedAt}}<span class="status status-stopped">revoked</span>{{else}}<form method="post" action="/workstations/{{$.Workstation.ID}}/shares/{{.ID}}/revoke"><button class="danger">Revoke</button></form>{{end}}
+        </div>
+      {{else}}<p class="muted">No share links have been created.</p>{{end}}
+      </div>
+    </div>
+  </section>
+</main>
+{{template "foot" .}}

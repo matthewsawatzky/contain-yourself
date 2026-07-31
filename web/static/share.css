@@ -1,0 +1,82 @@
+.sharing {
+  margin-top: 24px;
+}
+
+.share-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 28px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.share-secret {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  padding: 16px;
+  margin: 14px 0 22px;
+  border: 1px solid #2d6e66;
+  background: #12322f;
+  border-radius: 12px;
+}
+
+.share-secret b,
+.share-secret p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.share-secret p {
+  color: #adf5e3;
+  font-size: .82rem;
+}
+
+.share-list {
+  display: grid;
+  align-content: start;
+}
+
+.share-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.share-row > div {
+  display: grid;
+  gap: 5px;
+}
+
+.share-row small {
+  display: block;
+}
+
+.share-row.revoked {
+  opacity: .55;
+}
+
+.taskbar form {
+  display: flex;
+}
+
+@media (max-width: 850px) {
+  .share-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 500px) {
+  .form-row,
+  .share-secret {
+    grid-template-columns: 1fr;
+  }
+}

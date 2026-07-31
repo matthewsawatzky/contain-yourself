@@ -1,0 +1,34 @@
+schema_version: 1
+id: terminal
+name: Terminal
+version: 1.0.0
+description: Browser terminal backed by ttyd
+runtime:
+  type: container-service
+  image: tsl0922/ttyd:1.7.7
+  command: ["ttyd", "--writable", "--port", "7681", "--base-path", "/apps/terminal", "sh"]
+  internal_port: 7681
+routing:
+  base_path: /apps/terminal/
+  strip_prefix: false
+  websocket: true
+network:
+  mode: workstation-vpn
+storage:
+  - type: workspace
+    target: /workspace
+resources:
+  default_memory_mb: 512
+  default_cpu: 0.5
+health:
+  type: http
+  path: /
+  timeout_seconds: 5
+permissions:
+  capabilities: []
+desktop:
+  visible: true
+  icon: icon.svg
+  default_width: 1000
+  default_height: 650
+  singleton: false

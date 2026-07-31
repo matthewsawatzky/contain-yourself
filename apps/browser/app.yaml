@@ -1,0 +1,43 @@
+schema_version: 1
+id: browser
+name: Browser
+version: 1.1.0
+description: Remote Chromium session
+runtime:
+  type: container-service
+  image: lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1
+  environment:
+    PUID: "1000"
+    PGID: "1000"
+    TZ: Etc/UTC
+    HARDEN_DESKTOP: "true"
+  internal_port: 3000
+routing:
+  base_path: /apps/browser/
+  strip_prefix: true
+  websocket: true
+network:
+  mode: workstation-vpn
+storage:
+  - type: workspace
+    target: /config/Downloads
+    owner_uid: 1000
+    owner_gid: 1000
+  - type: app-data
+    target: /config
+    owner_uid: 1000
+    owner_gid: 1000
+resources:
+  default_memory_mb: 2048
+  default_cpu: 1
+  shm_size_mb: 1024
+health:
+  type: http
+  path: /
+  timeout_seconds: 15
+desktop:
+  visible: true
+  icon: icon.svg
+  default_width: 1200
+  default_height: 760
+  singleton: true

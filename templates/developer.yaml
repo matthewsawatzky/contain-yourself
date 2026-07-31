@@ -1,0 +1,12 @@
+schema_version: 1
+id: developer
+name: Developer
+description: Terminal, files, and code editor behind the configured VPN
+workspace_image: alpine:3.21
+apps: [web-desktop, terminal, files, code]
+vpn_required: true
+persistent: true
+cpu: 2
+memory_mb: 4096
+pid_limit: 512
+expires_hours: 0

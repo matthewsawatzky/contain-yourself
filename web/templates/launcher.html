@@ -1,0 +1,9 @@
+{{template "head" .}}
+<div class="desktop">
+  <header class="desktop-bar"><b>{{.Workstation.Name}}</b><span class="status status-{{.Workstation.State}}">{{.Workstation.State}}</span><span class="spacer"></span>{{if .Shared}}<span class="muted">Shared access</span><form method="post" action="/shared/{{.Workstation.ID}}/logout"><button class="link">Leave</button></form>{{else}}<a href="/workstations/{{.Workstation.ID}}">Manage</a><form method="post" action="/logout"><button class="link">Log out</button></form>{{end}}</header>
+  <main class="launcher"><div><div class="eyebrow">Remote workstation</div><h1>Choose an app</h1></div>
+    <div class="launcher-apps">{{range .Workstation.Apps}}{{if ne .AppID "web-desktop"}}<a href="{{$.AppBase}}/apps/{{.AppID}}/" class="launch-icon"><span>{{slice .AppID 0 1}}</span><b>{{.AppID}}</b><small>{{.State}}</small></a>{{end}}{{end}}</div>
+  </main>
+  <footer class="taskbar"><span>VPN {{if .Workstation.VPNRequired}}enforced{{else}}optional{{end}}</span>{{if .Shared}}{{if hasPermission .SharePermissions "restart-workstation"}}<form method="post" action="/shared/{{.Workstation.ID}}/actions/restart"><button class="link">Restart</button></form>{{end}}{{if hasPermission .SharePermissions "stop-workstation"}}<form method="post" action="/shared/{{.Workstation.ID}}/actions/stop"><button class="link">Stop</button></form>{{end}}{{end}}<span class="spacer"></span><code>{{.Workstation.Hostname}}</code></footer>
+</div>
+{{template "foot" .}}

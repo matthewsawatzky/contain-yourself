@@ -1,0 +1,34 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <section class="hero">
+    <div><div class="eyebrow">Administration</div><h1>Users</h1><p class="lead">Create accounts that can use organization VPN profiles and add private profiles of their own.</p></div>
+  </section>
+  {{template "flash" .}}
+  <div class="dashboard-grid">
+    <section>
+      <div class="cards">
+        {{range .Users}}
+        <article class="ws-card">
+          <div class="card-top"><span class="machine-icon">U</span><span class="status">{{if .IsAdmin}}administrator{{else}}user{{end}}</span></div>
+          <h2>{{.Username}}</h2>
+          <code>User {{.ID}}</code>
+        </article>
+        {{end}}
+      </div>
+    </section>
+    <aside class="panel">
+      <div class="eyebrow">New account</div>
+      <h2>Create user</h2>
+      <form method="post" action="/users" class="stack">
+        <label>Username<input name="username" required maxlength="64" autocomplete="off"></label>
+        <label>Password<input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+        <label>Confirm password<input name="confirm_password" type="password" required minlength="12" autocomplete="new-password"></label>
+        <label class="check"><input type="checkbox" name="is_admin" value="true"><span>Administrator</span></label>
+        <button class="primary">Create user</button>
+      </form>
+      <p class="fine">New users immediately see enabled global VPN profiles. Profiles they upload remain private to their account.</p>
+    </aside>
+  </div>
+</main>
+{{template "foot" .}}

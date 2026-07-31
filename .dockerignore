@@ -1,0 +1,8 @@
+.git
+.env
+controller.db
+backups
+data
+dist
+coverage.out
+*.log

@@ -1,0 +1,20 @@
+schema_version: 1
+id: web-desktop
+name: Desktop
+version: 1.0.0
+description: Controller-native workstation launcher
+runtime:
+  type: controller-ui
+routing:
+  base_path: /
+network:
+  mode: management-only
+resources:
+  default_memory_mb: 0
+  default_cpu: 0
+desktop:
+  visible: true
+  icon: icon.svg
+  default_width: 1200
+  default_height: 760
+  singleton: true
