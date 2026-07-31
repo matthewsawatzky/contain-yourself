@@ -92,6 +92,8 @@ front, then set `SECURE_COOKIES=true`.
 - server-rendered dashboard, app launcher, lifecycle controls and live state
   refresh
 - strict app manifests and templates with unsafe-field rejection
+- pull-request-friendly app-store packages, schemas, deterministic integrity
+  metadata, and a generated compact catalogue
 - deterministic, labelled Docker resources and an image allowlist
 - optional Gluetun network namespace with kill switch and readiness gating
 - encrypted WireGuard profiles with global and per-user private catalogues
@@ -130,6 +132,8 @@ workstationctl reconcile
 - [Installation and upgrades](docs/installation.md)
 - [GitHub release process](docs/releasing.md)
 - [App manifests](docs/app-manifest.md)
+- [App store](app_store/README.md)
+- [Contributing an app](app_store/docs/contributing.md)
 - [Template format](docs/template-format.md)
 - [Networking and reverse proxies](docs/networking.md)
 - [VPN profiles and multi-user access](docs/vpn-profiles.md)
@@ -148,3 +152,8 @@ end-to-end coverage for every chosen third-party app and VPN provider,
 controller-enforced file-size policy, finer grained read-only terminal/file
 sessions, and a controlled offline restore command. These are recorded
 explicitly rather than being hidden behind permissive fallback behavior.
+
+The app-store source catalogue and validation pipeline are present. The
+controller install/update UI and remote signed-catalogue synchronization are
+the next app-store phase. Until that is complete, the top-level `apps/`
+directory remains the installed snapshot used by releases.

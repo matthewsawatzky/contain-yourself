@@ -37,6 +37,32 @@ copies the mode-`0600` configuration to
 in Docker environment variables. Workstation applications share the gateway's
 network namespace, not its filesystem.
 
+## App-to-app networking
+
+There is no separate per-workstation backbone LAN in v1. This is deliberate:
+the original fail-closed design uses the VPN gateway's shared network namespace
+instead of a custom router.
+
+- In a VPN workstation, all app containers join the Gluetun container's
+  network namespace. They share one loopback interface and can reach each
+  other at `127.0.0.1:<internal-port>`. Internal ports must therefore be
+  unique within the workstation.
+- In a direct-internet workstation, app containers attach to the private
+  Docker management network. Docker can resolve their deterministic container
+  names, but those names are currently an implementation detail rather than a
+  stable app API.
+- Apps do not share their container filesystems. They communicate through
+  declared ports and share only the Docker volumes requested in their
+  manifests.
+- No app port is published on the host. Browser traffic always enters through
+  the authenticated controller proxy.
+
+The management network is the present control/proxy path, not a general
+service bus. If applications later need stable discovery, the next step should
+be one private bridge network per workstation plus controller-issued service
+names and explicit ingress/egress policy. That should be added as a versioned
+feature instead of letting apps depend on Docker container names accidentally.
+
 ## Reverse proxy and wildcard DNS
 
 No Caddy, Nginx or other proxy is bundled. A proxy should preserve `Host`,

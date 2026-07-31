@@ -23,6 +23,8 @@ jobs:
         run: go test -race ./...
       - name: Vet
         run: go vet ./...
+      - name: Validate app store
+        run: make store-check
       - name: Validate shell scripts
         run: |
           sh -n scripts/*.sh

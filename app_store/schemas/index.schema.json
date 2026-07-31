@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contain-yourself.dev/schemas/app-store-index-v1.json",
+  "title": "Contain Yourself app-store index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "apps"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "version",
+          "summary",
+          "categories",
+          "icon",
+          "image",
+          "compatibility",
+          "permissions",
+          "bundle"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$"},
+          "name": {"type": "string", "minLength": 1},
+          "version": {"type": "string"},
+          "summary": {"type": "string"},
+          "categories": {"type": "array", "items": {"type": "string"}},
+          "icon": {"type": "string"},
+          "image": {"type": "string"},
+          "compatibility": {"$ref": "bundle.schema.json#/properties/compatibility"},
+          "permissions": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["network", "storage", "capabilities"],
+            "properties": {
+              "network": {"enum": ["workstation-vpn", "management-only"]},
+              "storage": {"type": "array", "items": {"type": "string"}},
+              "capabilities": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "bundle": {"$ref": "bundle.schema.json#/$defs/file"}
+        }
+      }
+    }
+  }
+}

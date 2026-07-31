@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "browser",
+  "name": "Browser",
+  "version": "1.1.0",
+  "summary": "A private Chromium browser inside the workstation",
+  "description": "Runs a full Chromium session behind the authenticated controller proxy and, when selected, the workstation WireGuard gateway.",
+  "categories": [
+    "browser",
+    "internet"
+  ],
+  "authors": [
+    {
+      "name": "Contain Yourself maintainers",
+      "url": "https://github.com/matthewsawatzky/contain-yourself"
+    }
+  ],
+  "license": {
+    "catalog": "MIT",
+    "upstream": "See the LinuxServer Chromium project"
+  },
+  "links": {
+    "homepage": "https://docs.linuxserver.io/images/docker-chromium/",
+    "source": "https://github.com/linuxserver/docker-chromium",
+    "support": "https://github.com/matthewsawatzky/contain-yourself/issues"
+  },
+  "compatibility": {
+    "minimum_controller_version": "0.1.1",
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ]
+  },
+  "icon": "icon.svg",
+  "screenshots": [],
+  "package": {
+    "payload_sha256": "f8ea8eb8764b11ad015edc237aafdb36203b7b0904d4c188a326897705388e0d",
+    "payload_size_bytes": 1467,
+    "files": [
+      {
+        "path": "README.md",
+        "sha256": "eddb16382d728b387d666238646a4c215721e2cc6e1f56791aacecbb025394bd",
+        "size_bytes": 312
+      },
+      {
+        "path": "app.yaml",
+        "sha256": "d5a59495db49b042375c1bd060eb180ab89a2c79d98d8845bdb84d4fac01ab3a",
+        "size_bytes": 873
+      },
+      {
+        "path": "icon.svg",
+        "sha256": "97d86b0fd1f93a48efa0e5d6d82ce2cf2700e75ef71e6445a17bfc3cbbeda687",
+        "size_bytes": 282
+      }
+    ]
+  }
+}

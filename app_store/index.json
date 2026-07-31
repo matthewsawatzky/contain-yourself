@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "apps": [
+    {
+      "id": "browser",
+      "name": "Browser",
+      "version": "1.1.0",
+      "summary": "A private Chromium browser inside the workstation",
+      "categories": [
+        "browser",
+        "internet"
+      ],
+      "icon": "apps/browser/icon.svg",
+      "image": "lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1",
+      "compatibility": {
+        "minimum_controller_version": "0.1.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "permissions": {
+        "network": "workstation-vpn",
+        "storage": [
+          "app-data",
+          "workspace"
+        ],
+        "capabilities": []
+      },
+      "bundle": {
+        "path": "apps/browser/bundle.json",
+        "sha256": "bf6d84e8ca7eab783f7ebddc7badb04b86d8530940ab86d88d45d1866ecdd524",
+        "size_bytes": 1636
+      }
+    },
+    {
+      "id": "code",
+      "name": "Code",
+      "version": "1.1.0",
+      "summary": "VS Code in the browser with persistent settings",
+      "categories": [
+        "development",
+        "editor"
+      ],
+      "icon": "apps/code/icon.svg",
+      "image": "codercom/code-server:4.99.4",
+      "compatibility": {
+        "minimum_controller_version": "0.1.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "permissions": {
+        "network": "workstation-vpn",
+        "storage": [
+          "app-data",
+          "workspace"
+        ],
+        "capabilities": []
+      },
+      "bundle": {
+        "path": "apps/code/bundle.json",
+        "sha256": "fd79b6fe2c2d86890e98678028981731acea6bdfa01d3fc1ddeea80c2ae2e2fb",
+        "size_bytes": 1611
+      }
+    },
+    {
+      "id": "files",
+      "name": "Files",
+      "version": "1.1.0",
+      "summary": "Browse and manage files in the shared workspace",
+      "categories": [
+        "files",
+        "utilities"
+      ],
+      "icon": "apps/files/icon.svg",
+      "image": "filebrowser/filebrowser:v2.32.0",
+      "compatibility": {
+        "minimum_controller_version": "0.1.1",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "permissions": {
+        "network": "workstation-vpn",
+        "storage": [
+          "app-data",
+          "workspace"
+        ],
+        "capabilities": []
+      },
+      "bundle": {
+        "path": "apps/files/bundle.json",
+        "sha256": "cd914f1d723bd31fb7b22f72a2bad8ddf229897aa888c0952d560379c03eea56",
+        "size_bytes": 1592
+      }
+    }
+  ]
+}

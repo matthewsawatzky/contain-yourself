@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "files",
+  "name": "Files",
+  "version": "1.1.0",
+  "summary": "Browse and manage files in the shared workspace",
+  "description": "A lightweight file manager scoped to the workstation volume, routed through the controller without publishing a container port.",
+  "categories": [
+    "files",
+    "utilities"
+  ],
+  "authors": [
+    {
+      "name": "Contain Yourself maintainers",
+      "url": "https://github.com/matthewsawatzky/contain-yourself"
+    }
+  ],
+  "license": {
+    "catalog": "MIT",
+    "upstream": "See the File Browser project"
+  },
+  "links": {
+    "homepage": "https://filebrowser.org/",
+    "source": "https://github.com/filebrowser/filebrowser",
+    "support": "https://github.com/matthewsawatzky/contain-yourself/issues"
+  },
+  "compatibility": {
+    "minimum_controller_version": "0.1.1",
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ]
+  },
+  "icon": "icon.svg",
+  "screenshots": [],
+  "package": {
+    "payload_sha256": "48761940c3c4a5a623b587e8b30c6d0d08b4ab1ddf097e975d928c16ebbc5ccf",
+    "payload_size_bytes": 1228,
+    "files": [
+      {
+        "path": "README.md",
+        "sha256": "0b8b698e7dc910710c21a6d59f13d77ee05ea2489df096a3d525a3ec147b259a",
+        "size_bytes": 269
+      },
+      {
+        "path": "app.yaml",
+        "sha256": "846f703f03322ad7abbd1bf3acd204915d90d31208c1c128f28f068c887d46b5",
+        "size_bytes": 787
+      },
+      {
+        "path": "icon.svg",
+        "sha256": "f1274e2b4819fdcd7e1ef1f4d3e5b99e900c5928f11c72012408d506ad6ae6e0",
+        "size_bytes": 172
+      }
+    ]
+  }
+}

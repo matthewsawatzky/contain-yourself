@@ -4,6 +4,11 @@ Each app lives in `apps/<id>/app.yaml`. The scanner uses strict YAML decoding:
 unknown fields are errors rather than ignored options. A malformed package
 remains visible as a validation error and cannot be selected by a template.
 
+Optional catalogue apps use the identical runtime manifest inside
+`app_store/apps/<id>/`. Their adjacent `bundle.json` contains store copy,
+attribution, compatibility and integrity metadata; it does not duplicate
+runtime permissions. See [the app-store format](../app_store/docs/bundle-format.md).
+
 ## Schema
 
 ```yaml

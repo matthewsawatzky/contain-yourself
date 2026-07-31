@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "code",
+  "name": "Code",
+  "version": "1.1.0",
+  "summary": "VS Code in the browser with persistent settings",
+  "description": "Provides a browser-accessible code-server editor over the shared workstation volume, with persistent editor state and WebSocket support.",
+  "categories": [
+    "development",
+    "editor"
+  ],
+  "authors": [
+    {
+      "name": "Contain Yourself maintainers",
+      "url": "https://github.com/matthewsawatzky/contain-yourself"
+    }
+  ],
+  "license": {
+    "catalog": "MIT",
+    "upstream": "See the Coder code-server project"
+  },
+  "links": {
+    "homepage": "https://coder.com/docs/code-server",
+    "source": "https://github.com/coder/code-server",
+    "support": "https://github.com/matthewsawatzky/contain-yourself/issues"
+  },
+  "compatibility": {
+    "minimum_controller_version": "0.1.1",
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ]
+  },
+  "icon": "icon.svg",
+  "screenshots": [],
+  "package": {
+    "payload_sha256": "771e9af1a29c756aaf43cbed15d5a88020f45c29fb6b8932bdc4e4e4dc732961",
+    "payload_size_bytes": 1289,
+    "files": [
+      {
+        "path": "README.md",
+        "sha256": "c5d9cd9690618d8826677a0d7eebf42366327ab309b8009b25d850613f32cc1e",
+        "size_bytes": 259
+      },
+      {
+        "path": "app.yaml",
+        "sha256": "de09d9900c43366c80eeeb6e5e4da6bab0e90800c218f6362f44093f12d14711",
+        "size_bytes": 839
+      },
+      {
+        "path": "icon.svg",
+        "sha256": "d673ef66d66bc1f2503cb0f7fb64ebc49e371da1cc072029373033c8ab852457",
+        "size_bytes": 191
+      }
+    ]
+  }
+}
