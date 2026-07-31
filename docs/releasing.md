@@ -13,8 +13,8 @@ new prebuilt installer available.
 1. Create or select the GitHub repository and push this directory as its root.
 2. Keep GitHub Actions enabled with permission to publish packages and
    releases.
-3. Ensure the GHCR controller and worker packages are public for anonymous
-   installs.
+3. Ensure the GHCR controller, worker, and WSLAN packages are public for
+   anonymous installs.
 4. Protect `main` and require the CI workflow if appropriate.
 
 CI runs formatting, race tests, vet, shell validation, Compose validation, and
@@ -22,19 +22,33 @@ a release-bundle build. Dependabot tracks Go modules and GitHub Actions.
 
 ## Publish
 
-Create and push a semantic version tag:
+Use the interactive helper:
 
 ```bash
-git tag -s v0.1.0 -m "Workstation Manager v0.1.0"
-git push origin v0.1.0
+./scripts/next-release.sh
 ```
+
+It reads the latest reachable semantic version tag and asks whether the next
+release is major (`x.0.0`), minor (`0.x.0`), or patch (`0.0.x`). Before
+creating an annotated tag, it requires a clean `main` whose commit exactly
+matches `origin/main`, displays the calculated version, and asks for final
+confirmation.
+
+For automation or a preview:
+
+```bash
+./scripts/next-release.sh minor --dry-run
+./scripts/next-release.sh patch --yes
+```
+
+`RELEASE_REMOTE` can select a remote other than `origin`.
 
 The release workflow:
 
 - tests the tagged commit;
-- builds Linux AMD64 and ARM64 controller/worker images;
+- builds Linux AMD64 and ARM64 controller, worker, and WSLAN images;
 - publishes the exact version tag under
-  `ghcr.io/matthewsawatzky/contain-yourself-{controller,worker}`;
+  `ghcr.io/matthewsawatzky/contain-yourself-{controller,worker,wslan}`;
 - creates image provenance attestations;
 - packages the production Compose file and default config catalogue;
 - generates and uploads the repository-specific installer;

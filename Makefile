@@ -1,4 +1,4 @@
-.PHONY: build images test fmt vet compose-config store store-check up down logs backup release
+.PHONY: build images test fmt vet compose-config store store-check up down logs backup release next-release
 
 build:
 	go build ./cmd/...
@@ -39,3 +39,6 @@ backup:
 release:
 	@test -n "$(VERSION)" || (echo "usage: make release VERSION=v1.0.0"; exit 1)
 	./scripts/release.sh "$(VERSION)" dist
+
+next-release:
+	./scripts/next-release.sh $(TYPE)
