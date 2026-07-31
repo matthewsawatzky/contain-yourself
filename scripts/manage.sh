@@ -75,6 +75,7 @@ case "${1:-help}" in
       "https://github.com/$repository/releases/latest/download/install.sh" \
       -o "$installer"
     sh "$installer" --repository "$repository" --install-dir "$root"
+    "$root/manage" start
     ;;
   version)
     cat "$root/current/VERSION"

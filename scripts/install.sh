@@ -6,7 +6,7 @@ repository=${WM_GITHUB_REPOSITORY:-}
 install_dir=${WM_INSTALL_DIR:-"${XDG_DATA_HOME:-$HOME/.local/share}/workstation-manager"}
 requested_version=latest
 local_bundle=
-start=true
+start=false
 
 die() {
   printf 'workstation-manager installer: %s\n' "$*" >&2
@@ -22,7 +22,8 @@ Options:
   --version VERSION        Release tag to install (default: latest)
   --install-dir PATH       Installation directory
   --bundle PATH            Install a local release bundle (for development)
-  --no-start               Install files without starting Docker services
+  --start                  Pull images and start Docker services after install
+  --no-start               Do not start services (the default)
   -h, --help               Show this help
 EOF
 }
@@ -51,6 +52,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-start)
       start=false
+      shift
+      ;;
+    --start)
+      start=true
       shift
       ;;
     -h|--help)
@@ -233,6 +238,7 @@ ensure_env PUBLIC_BASE_DOMAIN ""
 ensure_env SECURE_COOKIES "false"
 ensure_env SESSION_LIFETIME "24h"
 ensure_env DOCKER_SOCKET "$docker_socket"
+ensure_env WORKER_DATA_SOURCE "worker-data"
 ensure_env APP_STORE_INDEX_URL "https://raw.githubusercontent.com/$repository/main/app_store/index.json"
 
 host_uid=$(id -u)

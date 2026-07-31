@@ -35,6 +35,26 @@ jobs:
         run: docker compose --env-file .env.example config --quiet
       - name: Build release bundle
         run: ./scripts/release.sh v0.0.0 dist
+      - name: Validate standalone setup
+        shell: bash
+        run: |
+          project=$(mktemp -d)
+          cp deploy/compose.yaml "$project/compose.yaml"
+          sed \
+            -e 's|@GITHUB_REPOSITORY@|example/contain-yourself|g' \
+            -e 's|@RELEASE_VERSION@|v0.0.0|g' \
+            scripts/setup.sh >"$project/setup.sh"
+          chmod 755 "$project/setup.sh"
+          "$project/setup.sh" \
+            --bundle "$PWD/dist/workstation-manager-bundle.tar.gz"
+          test -f "$project/.env"
+          test -d "$project/config/apps"
+          test -d "$project/config/templates"
+          test -d "$project/data/worker"
+          docker compose \
+            --project-directory "$project" \
+            --env-file "$project/.env" \
+            -f "$project/compose.yaml" config --quiet
       - name: Validate release Compose file
         run: |
           WM_IMAGE_REPOSITORY=ghcr.io/example/workstation-manager \

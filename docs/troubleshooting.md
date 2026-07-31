@@ -1,5 +1,21 @@
 # Troubleshooting
 
+## Current directory is inaccessible
+
+Messages such as `getcwd: cannot access parent directories` and
+`ls: Operation not permitted` come from the host shell before Compose runs.
+The directory was removed or Terminal does not have permission to access it.
+Move to an accessible directory before downloading release files:
+
+```bash
+cd ~
+mkdir -p contain-yourself
+cd contain-yourself
+```
+
+On macOS, also check **System Settings → Privacy & Security** if the chosen
+folder is under Desktop, Documents, Downloads, or an external volume.
+
 ## Stack does not become healthy
 
 ```bash
@@ -19,8 +35,8 @@ address (not a hostname) in `Endpoint`. Confirm `/dev/net/tun` exists on the
 Linux host. Inspect:
 
 ```bash
-docker logs wm-ws-XXXXXXXXXX-vpn
-docker inspect --format '{{json .State.Health}}' wm-ws-XXXXXXXXXX-vpn
+docker logs wm-ws-XXXXXXXXXX-wslan
+docker inspect --format '{{json .State}}' wm-ws-XXXXXXXXXX-wslan
 ```
 
 Applications are not started until the gateway is healthy. Do not bypass this

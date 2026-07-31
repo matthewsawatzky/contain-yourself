@@ -5,8 +5,8 @@ installation. CI tests source changes; tagged releases publish runtime images
 and a small deployment bundle.
 
 Normal development does not create a release. Push branches and pull requests
-as usual. A semantic version tag is the deliberate promotion step that makes a
-new prebuilt installer available.
+as usual. A semantic version tag is the deliberate promotion step that makes
+new prebuilt Compose assets available.
 
 ## Initial repository setup
 
@@ -51,10 +51,11 @@ The release workflow:
   `ghcr.io/matthewsawatzky/contain-yourself-{controller,worker,wslan}`;
 - creates image provenance attestations;
 - packages the production Compose file and default config catalogue;
-- generates and uploads the repository-specific installer;
+- generates a repository/version-specific directory setup script;
+- retains the managed installer as a compatibility asset;
 - publishes a GitHub release with generated notes.
 
-The installer and Compose file always select a semantic release tag. The
+The setup script and Compose file always select a semantic release tag. The
 release policy must never republish an existing container tag; enable GitHub's
 immutable-release setting where available. Installations do not deploy from
 `main` or use a mutable `latest` container tag.

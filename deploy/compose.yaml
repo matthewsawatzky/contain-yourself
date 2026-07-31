@@ -45,7 +45,7 @@ services:
     image: "${WM_IMAGE_REPOSITORY:?set WM_IMAGE_REPOSITORY}-worker:${WM_VERSION:?set WM_VERSION}"
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
-      - worker-data:/data
+      - ${WORKER_DATA_SOURCE:-./data/worker}:/data
     expose:
       - "8090"
     environment:

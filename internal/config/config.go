@@ -41,7 +41,7 @@ func LoadController() (Controller, error) {
 		InstalledAppsDirectory: env("INSTALLED_APPS_DIRECTORY", "/data/apps"),
 		AppStoreDirectory:      env("APP_STORE_DIRECTORY", "/data/app-store"),
 		AppStoreIndexURL:       env("APP_STORE_INDEX_URL", "https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json"),
-		ControllerVersion:      strings.TrimPrefix(env("CONTROLLER_VERSION", "0.3.0"), "v"),
+		ControllerVersion:      strings.TrimPrefix(env("CONTROLLER_VERSION", "0.3.1"), "v"),
 		TemplatesDirectory:     env("TEMPLATES_DIRECTORY", "/config/templates"),
 		VPNProfilesDirectory:   env("VPN_PROFILES_DIRECTORY", "/data/vpn-profiles"),
 		VPNEncryptionKeyFile:   env("VPN_ENCRYPTION_KEY_FILE", "/data/vpn-profiles.key"),

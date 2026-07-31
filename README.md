@@ -17,22 +17,34 @@ browser ──HTTP──> controller ──narrow API──> docker-worker ─�
 No reverse proxy is bundled. The default URL is
 <http://127.0.0.1:8080>.
 
-## One-command installation
+## Compose installation
 
 Requirements: Docker Engine 24+ with Compose v2, Linux host support for
 `/dev/net/tun` when using VPN workstations, and enough disk for selected images.
 
-After the repository has published its first GitHub release, installation is:
+Create a directory you own, download the two release files, and prepare its
+local folders:
 
 ```bash
-curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/install.sh | sh
+mkdir contain-yourself
+cd contain-yourself
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
+chmod +x setup.sh
+./setup.sh
 ```
 
-The release workflow bakes the repository identity into the downloaded
-installer, so users do not pass repository names, tokens, paths, or image
-tags. The installer verifies the release bundle, generates the worker token,
-creates the installation folders, pulls the controller and worker from GitHub
-Container Registry, and starts Compose.
+`setup.sh` verifies and installs the small core configuration bundle, generates
+the private worker token, and creates `.env`, `config/`, and `data/`. It does
+not pull images or start a service. Review the files, then run:
+
+```bash
+docker compose up -d
+```
+
+Compose fetches the exact tagged controller, worker, and WSLAN images from
+GitHub Container Registry. All persistent files remain in the directory you
+created.
 
 Open <http://127.0.0.1:8080> and create the initial administrator. The
 Terminal and Private workstation templates can be used immediately. Install
@@ -41,27 +53,24 @@ launching a Private workstation, open **VPN profiles** and paste a WireGuard
 configuration from your VPN provider. No VPN account credentials belong in
 `.env`.
 
-Common management commands are:
+Common management commands are standard Compose commands:
 
 ```bash
-wm status
-wm logs
-wm backup
-wm update
-wm stop
-wm start
+docker compose ps
+docker compose logs -f
+docker compose stop
+docker compose up -d
+docker compose exec controller workstationctl backup
 ```
 
-The default installation is under
-`~/.local/share/workstation-manager`. Add `~/.local/bin` to `PATH` if the
-shell does not already include it. See [Installation](docs/installation.md)
-for the folder layout, custom paths, and manual development startup.
+See [Installation](docs/installation.md) for the folder layout and update
+procedure.
 
 ## Clone and build from source
 
 A GitHub Release is not required for development. Clone the complete
-repository and let Docker build the controller and worker for the local Docker
-platform:
+repository and let Docker build the controller, worker, and WSLAN image for the
+local Docker platform:
 
 ```bash
 git clone https://github.com/matthewsawatzky/contain-yourself.git

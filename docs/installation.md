@@ -1,112 +1,124 @@
 # Installation and upgrades
 
-## One command
+## Download the Compose project
 
-Each tagged GitHub release contains a repository-specific installer:
+Requirements are Docker Engine 24+ and Docker Compose v2. Start from a
+directory you own and can access:
 
 ```bash
-curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/install.sh | sh
+mkdir contain-yourself
+cd contain-yourself
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
+chmod +x setup.sh
+./setup.sh
 ```
 
-It requires Docker Engine and Docker Compose v2. It does not require Git, Go,
-or a source checkout. The installer:
+The setup script performs host-file preparation only. It:
 
-1. downloads the latest release bundle and checksum from GitHub Releases;
-2. verifies SHA-256 before extraction;
+1. downloads the configuration bundle for the exact release embedded in the
+   script;
+2. verifies the bundle SHA-256 before extraction;
 3. creates a random 256-bit controller-to-worker token;
-4. records the host UID/GID for Linux bind-mount permissions;
-5. selects versioned controller and worker images from GHCR;
-6. creates the config/data layout and starts Compose.
+4. records the host UID/GID and local Docker socket;
+5. creates `.env`, `config/`, and `data/`;
+6. does **not** pull images or start containers.
 
-The prebuilt controller and worker cover `linux/amd64` and `linux/arm64`.
-Those are also the Linux-container platforms used by Intel/Apple Silicon
-Docker Desktop and the usual Windows Docker Desktop/WSL2 installations. Every
-image in the default app catalogue currently publishes both architectures.
+Review `compose.yaml` and `.env`, then start it yourself:
 
-The repository and its GHCR packages must be public for anonymous
-installation. Private deployments can authenticate Docker and GitHub download
-requests separately before running the installer.
+```bash
+docker compose up -d
+```
 
-## Installed layout
+Compose downloads the exact tagged controller, worker, and WSLAN images from
+GHCR. The prebuilt images cover `linux/amd64` and `linux/arm64`, including the
+Linux container environments used by Intel and Apple Silicon Docker Desktop.
 
-The default location is `~/.local/share/workstation-manager`:
+Open <http://127.0.0.1:8080> and create the first administrator.
+
+## Local layout
+
+Everything associated with the controller is visible in the chosen directory:
 
 ```text
-workstation-manager/
+contain-yourself/
+├── compose.yaml
+├── setup.sh
 ├── .env
-├── manage
-├── config -> current/config
-├── data/
-│   ├── controller.db
+├── config/
 │   ├── apps/
-│   ├── app-store/
-│   ├── vpn-profiles.key
-│   ├── vpn-profiles/
-│   └── backups/
-├── current -> releases/v1.2.3
-└── releases/
-    └── v1.2.3/
-        ├── VERSION
-        ├── compose.yaml
-        └── config/
-            ├── apps/
-            └── templates/
+│   └── templates/
+└── data/
+    ├── controller.db
+    ├── apps/
+    ├── app-store/
+    ├── vpn-profiles.key
+    ├── vpn-profiles/
+    ├── backups/
+    └── worker/
+        └── app-approvals.json
 ```
 
-`data/` is never replaced by installation or upgrade. Store-installed app
-packages and their rollback versions live there. `config/` points to the
-read-only core Desktop and Terminal definitions shipped with the current
-release. To maintain custom core configuration, copy it elsewhere and set
-`CONFIG_DIRECTORY` in `.env`; upgrades preserve this setting.
+`config/` contains the shipped core Desktop and Terminal definitions and can
+be inspected or linked elsewhere. `data/` contains mutable controller and
+worker state. Back up the entire data directory so VPN ciphertext and its key
+remain together.
 
-Upgrading from a release before the app store preserves Browser, Code, and
-Files definitions from the previous `config/apps` under `data/apps`, so
-existing workstations remain usable.
-
-The v0.3 networking upgrade replaces legacy app/VPN namespaces with WSLAN.
-After upgrading the controller, use **Update** once on each existing
-workstation. Its labelled volumes are preserved while the worker replaces the
-runtime containers and creates the workstation's private network. Until then,
-legacy workstations do not have the WSLAN ingress expected by v0.3.
-
-The installer also creates `wm` and `workstation-manager` links under
-`~/.local/bin`. If that directory is not on `PATH`, invoke the full
-`~/.local/share/workstation-manager/manage` path or update the shell path.
+The setup script preserves an existing `.env`, token, data, and configuration.
+Pass `--refresh-config` when you intentionally want to copy newer shipped core
+files over files with the same names.
 
 ## Operations
 
+Run commands from the directory containing `compose.yaml`:
+
 ```bash
-wm doctor
-wm status
-wm logs
-wm backup
-wm restart
-wm stop
-wm start
+docker compose ps
+docker compose logs -f controller docker-worker
+docker compose stop
+docker compose up -d
+docker compose exec controller workstationctl backup
 ```
 
-`wm update` downloads the latest release installer from the configured GitHub
-repository. It installs the new release beside the old one, atomically switches
-`current`, preserves `.env` and `data/`, pulls the exact new image tag, and
-recreates the services. Previous release folders remain available for
-inspection and a future rollback command.
+No application or controller port other than `127.0.0.1:8080` is published by
+default.
 
-Edit `.env` to change the bind address, external base domain, secure-cookie
-mode, session lifetime, Docker socket source, data/config paths, or trusted
-`APP_STORE_INDEX_URL`.
+## Upgrade
 
-## Development startup
-
-From a source checkout:
+Download the new release assets over the old copies, rerun setup, and let
+Compose recreate changed services:
 
 ```bash
+curl -fL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml -o compose.yaml
+curl -fL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh -o setup.sh
+chmod +x setup.sh
+./setup.sh --refresh-config
+docker compose up -d
+```
+
+The new setup script updates `WM_VERSION` while preserving local settings and
+data. Compose pulls missing versioned images automatically.
+
+The v0.3 networking upgrade replaces legacy app/VPN namespaces with WSLAN.
+Use **Update** once on each workstation created by an older controller. Its
+labelled volumes are preserved while runtime containers are replaced.
+
+## Source development
+
+A release is not required for development:
+
+```bash
+git clone https://github.com/matthewsawatzky/contain-yourself.git
+cd contain-yourself
 ./scripts/dev-up.sh
 ```
 
-That is also one command, but it builds images locally. End-user installation
-uses GitHub release assets and prebuilt GHCR images instead.
+This builds all images locally. Use the source path for local changes,
+unsupported hardware, or private forks.
 
-Use the source path for unsupported hardware, local patches, or private forks.
-The controller and worker may build on additional Go/Alpine architectures, but
-the usable app set is limited to third-party images published for that
-architecture.
+## Legacy managed installation
+
+`install.sh` remains a compatibility path for installations already managed
+under `~/.local/share/workstation-manager`. It no longer starts services unless
+passed `--start`. New installations should use the visible Compose-directory
+layout above.
