@@ -47,6 +47,8 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.names.outputs.repository }}-controller:${{ steps.names.outputs.version }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=controller
+          cache-to: type=gha,mode=max,scope=controller
       - name: Build and publish worker
         id: worker
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
@@ -57,6 +59,8 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.names.outputs.repository }}-worker:${{ steps.names.outputs.version }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
       - name: Attest controller image
         uses: actions/attest@v4
         with:
