@@ -28,6 +28,7 @@ type Template struct {
 	MemoryMB       int      `yaml:"memory_mb" json:"memory_mb"`
 	PIDLimit       int      `yaml:"pid_limit" json:"pid_limit"`
 	ExpiresHours   int      `yaml:"expires_hours" json:"expires_hours"`
+	Custom         bool     `yaml:"-" json:"custom"`
 }
 
 type Registry struct {
@@ -60,6 +61,7 @@ func Scan(directory string, appExists func(string) bool) (*Registry, error) {
 		if err := Validate(template, appExists); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
+		template.Custom = strings.HasPrefix(item.Name(), "custom-")
 		if _, exists := registry.templates[template.ID]; exists {
 			return nil, fmt.Errorf("duplicate template id %q", template.ID)
 		}
@@ -69,6 +71,55 @@ func Scan(directory string, appExists func(string) bool) (*Registry, error) {
 		return nil, errors.New("no valid templates found")
 	}
 	return registry, nil
+}
+
+func SaveCustom(directory string, value Template, appExists func(string) bool) error {
+	if !strings.HasPrefix(value.ID, "custom-") {
+		return errors.New("custom template id must begin with custom-")
+	}
+	value.Custom = false
+	if err := Validate(value, appExists); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(directory, 0o750); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(directory, ".custom-template-*.yaml")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o640); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryName, filepath.Join(directory, value.ID+".yaml"))
+}
+
+func DeleteCustom(directory, id string) error {
+	if !identifier.MatchString(id) || !strings.HasPrefix(id, "custom-") {
+		return errors.New("invalid custom template id")
+	}
+	if err := os.Remove(filepath.Join(directory, id+".yaml")); err != nil {
+		return err
+	}
+	return nil
 }
 
 func Validate(t Template, appExists func(string) bool) error {
@@ -83,6 +134,9 @@ func Validate(t Template, appExists func(string) bool) error {
 	}
 	if t.ExpiresHours < 0 {
 		return errors.New("expires_hours cannot be negative")
+	}
+	if len(t.Apps) == 0 {
+		return errors.New("at least one default app is required")
 	}
 	seen := make(map[string]bool)
 	for _, app := range t.Apps {

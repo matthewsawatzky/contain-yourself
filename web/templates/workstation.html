@@ -51,6 +51,7 @@
     <div class="log-list">
       {{range .Workstation.Apps}}{{if ne .AppID "web-desktop"}}<details data-log-url="/api/v1/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/logs?tail=200"><summary>{{.AppID}} logs</summary><pre>Open to load recent logs.</pre></details>{{end}}{{end}}
     </div>
+    <p class="fine">Persistent app and network logs: <code>data/workstation-logs/{{.Workstation.ID}}/</code></p>
   </section>
   <section class="panel events"><div class="eyebrow">Audit trail</div><h2>Recent events</h2>
     {{range .Events}}<div class="event"><time>{{.CreatedAt.Format "02 Jan 15:04"}}</time><span>{{.Message}}</span><code>{{.Type}}</code></div>{{else}}<p class="muted">No events recorded.</p>{{end}}

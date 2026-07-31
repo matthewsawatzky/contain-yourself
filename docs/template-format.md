@@ -23,8 +23,17 @@ IDs are lowercase letters, digits and hyphens. Images must be pinned and every
 app must resolve to a valid scanned manifest. Resource minimums are 128 MB
 memory and 32 PIDs. `expires_hours: 0` means no automatic expiration.
 
-The dashboard lets a user deselect apps from the chosen template. It never lets
-the request add an app that the template did not approve.
+Templates are presets rather than security allowlists. Their `apps` field
+defines the checkboxes selected by default. At launch, a user may select any
+installed app that passed manifest validation and administrator approval.
+This means installing Browser in the app store makes it immediately available
+with both built-in and custom templates.
+
+Administrators can create and update templates at **Templates** in the
+controller. UI-created IDs are prefixed with `custom-` and are stored as
+ordinary YAML files under `config/templates/`. Those files can be reviewed,
+versioned, or edited by hand. Built-in template IDs cannot be overwritten or
+deleted through the UI.
 
 VPN-required templates also require an enabled WireGuard profile accessible to
 the workstation owner. That can be an administrator-created global profile or

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"workstation-manager/internal/config"
@@ -26,6 +27,10 @@ type Service struct {
 	engine    *Engine
 	log       *slog.Logger
 	approvals *approvalStore
+
+	captureMu  sync.Mutex
+	captureCtx context.Context
+	captures   map[string]struct{}
 }
 
 const (
@@ -42,7 +47,10 @@ func NewService(cfg config.Worker, engine *Engine, logger *slog.Logger) (*Servic
 	if err != nil {
 		return nil, fmt.Errorf("open app approvals: %w", err)
 	}
-	return &Service{config: cfg, engine: engine, log: logger, approvals: approvals}, nil
+	return &Service{
+		config: cfg, engine: engine, log: logger, approvals: approvals,
+		captures: make(map[string]struct{}),
+	}, nil
 }
 
 func (s *Service) Handler() http.Handler {
@@ -181,6 +189,12 @@ func (s *Service) logs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tail = parsed
+	}
+	if output, ok := s.persistedLogs(id, appID, tail); ok {
+		writeJSON(w, http.StatusOK, workerapi.LogResponse{
+			WorkstationID: id, AppID: appID, Lines: tail, Logs: output,
+		})
+		return
 	}
 	resources, err := s.engine.ListManaged(r.Context(), id)
 	if err != nil {
@@ -461,6 +475,7 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 	if err := s.engine.ContainerAction(ctx, gatewayName, "start"); err != nil {
 		return fmt.Errorf("start WSLAN gateway: %w", err)
 	}
+	s.captureContainer(request.WorkstationID, "wslan", gatewayName)
 	if err := waitHTTP(ctx, gatewayName, wslanIngressPort, "/healthz",
 		5*time.Second, 90*time.Second, nil); err != nil {
 		return fmt.Errorf("WSLAN gateway did not become healthy: %w", err)
@@ -492,6 +507,7 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		if err := s.engine.ContainerAction(ctx, sandboxName, "start"); err != nil {
 			return fmt.Errorf("start network sandbox for app %s: %w", app.ID, err)
 		}
+		s.captureContainer(request.WorkstationID, "network-"+app.ID, sandboxName)
 		appLabels := baseLabels(request.WorkstationID, "app")
 		appLabels[workerapi.LabelAppID] = app.ID
 		mounts := make([]Mount, 0, len(app.Storage))
@@ -522,6 +538,8 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		if err := s.engine.ContainerAction(ctx, name(request.WorkstationID, "app-"+app.ID), "start"); err != nil {
 			return fmt.Errorf("start app %s: %w", app.ID, err)
 		}
+		s.captureContainer(request.WorkstationID, app.ID,
+			name(request.WorkstationID, "app-"+app.ID))
 		if app.HealthPath != "" {
 			requestTimeout := time.Duration(app.HealthTimeoutSeconds) * time.Second
 			if requestTimeout <= 0 {
@@ -688,6 +706,9 @@ func (s *Service) action(w http.ResponseWriter, r *http.Request) {
 			if err := s.engine.ContainerAction(r.Context(), resource.Name, request.Action); err != nil {
 				writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: err.Error()})
 				return
+			}
+			if request.Action == "start" {
+				s.captureResource(resource)
 			}
 			if request.Action == "start" && (resource.Kind == "vpn" || resource.Kind == "wslan") {
 				if resource.Kind == "wslan" {

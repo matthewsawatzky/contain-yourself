@@ -148,6 +148,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /{$}", s.requireUser(http.HandlerFunc(s.root)))
 	mux.Handle("POST /workstations", s.requireUser(http.HandlerFunc(s.createWorkstation)))
+	mux.Handle("GET /templates", s.requireUser(http.HandlerFunc(s.templatesPage)))
+	mux.Handle("POST /templates", s.requireAdmin(http.HandlerFunc(s.createCustomTemplate)))
+	mux.Handle("POST /templates/{id}/delete", s.requireAdmin(http.HandlerFunc(s.deleteCustomTemplate)))
 	mux.Handle("GET /users", s.requireAdmin(http.HandlerFunc(s.usersPage)))
 	mux.Handle("POST /users", s.requireAdmin(http.HandlerFunc(s.createUser)))
 	mux.Handle("GET /vpn-profiles", s.requireUser(http.HandlerFunc(s.vpnProfilesPage)))
@@ -367,6 +370,89 @@ func (s *Server) createWorkstation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/workstations/"+ws.ID, http.StatusSeeOther)
+}
+
+func (s *Server) templatesPage(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	s.registryMu.RLock()
+	data := pageData{
+		Title: "Templates", User: &user,
+		Templates: s.presets.All(), Apps: s.apps.Entries(),
+	}
+	s.registryMu.RUnlock()
+	s.render(w, "templates.html", data)
+}
+
+func (s *Server) createCustomTemplate(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid form"))
+		return
+	}
+	id := strings.ToLower(strings.TrimSpace(r.FormValue("id")))
+	id = strings.TrimPrefix(id, "custom-")
+	cpu, cpuErr := strconv.ParseFloat(r.FormValue("cpu"), 64)
+	memory, memoryErr := strconv.Atoi(r.FormValue("memory_mb"))
+	pids, pidsErr := strconv.Atoi(r.FormValue("pid_limit"))
+	expires := 0
+	var expiresErr error
+	if raw := strings.TrimSpace(r.FormValue("expires_hours")); raw != "" {
+		expires, expiresErr = strconv.Atoi(raw)
+	}
+	if cpuErr != nil || memoryErr != nil || pidsErr != nil || expiresErr != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity,
+			errors.New("CPU, memory, PID limit, and expiration must be valid numbers"))
+		return
+	}
+	value := templatesregistry.Template{
+		SchemaVersion:  1,
+		ID:             "custom-" + id,
+		Name:           strings.TrimSpace(r.FormValue("name")),
+		Description:    strings.TrimSpace(r.FormValue("description")),
+		WorkspaceImage: "alpine:3.21",
+		Apps:           unique(r.Form["apps"]),
+		VPNRequired:    r.FormValue("vpn_required") == "true",
+		Persistent:     r.FormValue("persistent") == "true",
+		CPU:            cpu,
+		MemoryMB:       memory,
+		PIDLimit:       pids,
+		ExpiresHours:   expires,
+	}
+	s.registryMu.RLock()
+	err := templatesregistry.SaveCustom(s.config.TemplatesDirectory, value, func(id string) bool {
+		_, ok := s.apps.Get(id)
+		return ok
+	})
+	s.registryMu.RUnlock()
+	if err != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if err := s.rescan(); err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, "/templates", http.StatusSeeOther)
+}
+
+func (s *Server) deleteCustomTemplate(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	if err := templatesregistry.DeleteCustom(
+		s.config.TemplatesDirectory, r.PathValue("id")); err != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if err := s.rescan(); err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, "/templates", http.StatusSeeOther)
 }
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
@@ -914,16 +1000,8 @@ func (s *Server) create(ctx context.Context, user database.User, input createInp
 	if len(input.Apps) == 0 {
 		input.Apps = append([]string(nil), preset.Apps...)
 	}
-	allowed := make(map[string]bool)
-	for _, id := range preset.Apps {
-		allowed[id] = true
-	}
 	var dbApps []database.WorkstationApp
 	for _, id := range unique(input.Apps) {
-		if !allowed[id] {
-			s.registryMu.RUnlock()
-			return database.Workstation{}, fmt.Errorf("app %q is not allowed by template %q", id, preset.ID)
-		}
 		app, exists := s.apps.Get(id)
 		if !exists {
 			s.registryMu.RUnlock()

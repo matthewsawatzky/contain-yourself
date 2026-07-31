@@ -17,7 +17,6 @@ if (templateSelect) {
     const selected = new Set(option?.dataset.apps.trim().split(/\s+/) || []);
     for (const checkbox of document.querySelectorAll('input[name="apps"]')) {
       checkbox.checked = selected.has(checkbox.value);
-      checkbox.closest("label").hidden = !selected.has(checkbox.value);
     }
     for (const field of document.querySelectorAll("[data-vpn-profile]")) {
       field.hidden = option?.dataset.vpn !== "true";

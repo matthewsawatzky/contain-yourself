@@ -37,8 +37,8 @@
 
 .log-list details {
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #091525;
+  border-radius: 7px;
+  background: var(--panel-soft);
 }
 
 .log-list summary {

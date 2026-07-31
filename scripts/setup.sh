@@ -125,6 +125,10 @@ if [ "$project_directory" != "$script_directory" ]; then
     cp "$script_directory/setup.sh" "$project_directory/setup.sh"
     chmod 755 "$project_directory/setup.sh"
   fi
+  if [ -f "$script_directory/update.sh" ]; then
+    cp "$script_directory/update.sh" "$project_directory/update.sh"
+    chmod 755 "$project_directory/update.sh"
+  fi
 fi
 cd "$project_directory"
 
@@ -185,7 +189,7 @@ bundle_version=$(tr -d '\r\n' <"$payload/VERSION")
 [ "$bundle_version" = "$version" ] ||
   die "configuration bundle is $bundle_version but setup expects $version"
 
-mkdir -p data/apps data/app-store data/vpn-profiles data/backups data/worker
+mkdir -p data/apps data/app-store data/vpn-profiles data/backups data/worker data/workstation-logs
 if [ ! -d config/apps ] || [ ! -d config/templates ] || [ "$refresh_config" = true ]; then
   mkdir -p config
   cp -R "$payload/config/." config/

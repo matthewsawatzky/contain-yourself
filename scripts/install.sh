@@ -151,6 +151,7 @@ fi
 
 mkdir -p "$install_dir/releases" "$install_dir/data"
 mkdir -p "$install_dir/data/apps"
+mkdir -p "$install_dir/data/workstation-logs"
 release_dir="$install_dir/releases/$release_version"
 if [ ! -d "$release_dir" ]; then
   incoming="$install_dir/releases/.incoming-$release_version-$$"

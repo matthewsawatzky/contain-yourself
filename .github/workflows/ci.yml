@@ -32,6 +32,7 @@ jobs:
           test -x scripts/install.sh
           test -x scripts/manage.sh
           test -x scripts/release.sh
+          test -x scripts/update.sh
       - name: Validate development Compose file
         run: docker compose --env-file .env.example config --quiet
       - name: Build release bundle
@@ -53,6 +54,7 @@ jobs:
           test -d "$project/config/apps"
           test -d "$project/config/templates"
           test -d "$project/data/worker"
+          test -d "$project/data/workstation-logs"
           docker compose \
             --project-directory "$project" \
             --env-file "$project/.env" \
@@ -72,14 +74,20 @@ jobs:
             -e 's|@GITHUB_REPOSITORY@|example/contain-yourself|g' \
             -e 's|@RELEASE_VERSION@|v0.0.0|g' \
             scripts/bootstrap.sh >"$assets/bootstrap.sh"
-          chmod 755 "$assets/setup.sh" "$assets/bootstrap.sh"
+          sed 's|@GITHUB_REPOSITORY@|example/contain-yourself|g' \
+            scripts/update.sh >"$assets/update.sh"
+          chmod 755 "$assets/setup.sh" "$assets/bootstrap.sh" "$assets/update.sh"
           WM_RELEASE_BASE_URL="file://$assets" \
             "$assets/bootstrap.sh" --directory "$project"
           test -f "$project/compose.yaml"
           test -x "$project/setup.sh"
+          test -x "$project/update.sh"
           test -f "$project/.env"
           test -d "$project/config/apps"
           test -d "$project/data/worker"
+          test -d "$project/data/workstation-logs"
+          WM_RELEASE_BASE_URL="file://$assets" \
+            "$project/update.sh" --directory "$project"
           test -z "$(docker compose -f "$project/compose.yaml" ps --status running -q)"
       - name: Validate release Compose file
         run: |

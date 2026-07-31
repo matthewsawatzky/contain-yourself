@@ -509,6 +509,58 @@ func (e *Engine) ContainerLogs(ctx context.Context, name string, tail int) (stri
 	return decodeDockerLogStream(data), nil
 }
 
+func (e *Engine) StreamContainerLogs(ctx context.Context, name string, since int64, writer io.Writer) error {
+	path := fmt.Sprintf(
+		"/containers/%s/logs?follow=true&stdout=true&stderr=true&timestamps=true&since=%d",
+		url.PathEscape(name), since)
+	response, err := e.request(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return engineError(response)
+	}
+	return copyDockerLogStream(response.Body, writer)
+}
+
+func copyDockerLogStream(reader io.Reader, writer io.Writer) error {
+	header := make([]byte, 8)
+	if count, err := io.ReadFull(reader, header); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			_, writeErr := writer.Write(header[:count])
+			return writeErr
+		}
+		return err
+	}
+	if (header[0] != 1 && header[0] != 2) ||
+		header[1] != 0 || header[2] != 0 || header[3] != 0 {
+		if _, err := writer.Write(header); err != nil {
+			return err
+		}
+		_, err := io.Copy(writer, reader)
+		return err
+	}
+	for {
+		size := int(header[4])<<24 | int(header[5])<<16 | int(header[6])<<8 | int(header[7])
+		if size < 0 || size > 16*1024*1024 {
+			return errors.New("invalid Docker log frame")
+		}
+		if _, err := io.CopyN(writer, reader, int64(size)); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil
+			}
+			return err
+		}
+		if _, err := io.ReadFull(reader, header); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
 func decodeDockerLogStream(data []byte) string {
 	if len(data) < 8 || (data[0] != 1 && data[0] != 2) ||
 		data[1] != 0 || data[2] != 0 || data[3] != 0 {

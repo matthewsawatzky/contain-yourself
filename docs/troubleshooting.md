@@ -59,6 +59,15 @@ docker ps -a --filter label=workstation-id=ws-XXXXXXXXXX
 docker logs wm-ws-XXXXXXXXXX-app-terminal
 ```
 
+The same output is persisted on the host under:
+
+```text
+data/workstation-logs/ws-XXXXXXXXXX/
+```
+
+This directory also contains `wslan.log` and `network-<app>.log`, which are
+useful when an application starts but cannot reach its internal network.
+
 Check the manifest's internal port and health path. The app must listen on
 `0.0.0.0`, not loopback.
 

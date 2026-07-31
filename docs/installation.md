@@ -19,8 +19,8 @@ itself is piped through `sh`. It offers three choices:
 If the current directory is inaccessible, it safely offers your home
 directory instead. It warns before adding files to a non-empty directory.
 
-The bootstrap downloads `compose.yaml` and `setup.sh`. The setup script then
-performs host-file preparation only. It:
+The bootstrap downloads `compose.yaml`, `setup.sh`, and `update.sh`. The setup
+script then performs host-file preparation only. It:
 
 1. downloads the configuration bundle for the exact release embedded in the
    script;
@@ -53,7 +53,8 @@ mkdir contain-yourself
 cd contain-yourself
 curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
 curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
-chmod +x setup.sh
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/update.sh
+chmod +x setup.sh update.sh
 ./setup.sh
 ```
 
@@ -69,6 +70,7 @@ Everything associated with the controller is visible in the chosen directory:
 contain-yourself/
 ├── compose.yaml
 ├── setup.sh
+├── update.sh
 ├── .env
 ├── config/
 │   ├── apps/
@@ -80,14 +82,22 @@ contain-yourself/
     ├── vpn-profiles.key
     ├── vpn-profiles/
     ├── backups/
+    ├── workstation-logs/
+    │   └── ws-…/
+    │       ├── browser.log
+    │       ├── network-browser.log
+    │       └── wslan.log
     └── worker/
         └── app-approvals.json
 ```
 
-`config/` contains the shipped core Desktop and Terminal definitions and can
-be inspected or linked elsewhere. `data/` contains mutable controller and
-worker state. Back up the entire data directory so VPN ciphertext and its key
-remain together.
+`config/` contains shipped app definitions and editable template presets.
+Templates created in the controller are written to `config/templates/`.
+`data/` contains mutable controller and worker state. Per-workstation app,
+network sandbox, and WSLAN logs are continuously captured in
+`data/workstation-logs/`; each resource keeps a 25 MiB current file and one
+rotated previous file. Back up the entire data directory so logs, VPN
+ciphertext, and its key remain together.
 
 The setup script preserves an existing `.env`, token, data, and configuration.
 Pass `--refresh-config` when you intentionally want to copy newer shipped core
@@ -110,19 +120,25 @@ default.
 
 ## Upgrade
 
-Download the new release assets over the old copies, rerun setup, and let
-Compose recreate changed services:
+The bootstrap installs an updater. By default it prepares files without
+changing running containers:
 
 ```bash
-curl -fL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml -o compose.yaml
-curl -fL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh -o setup.sh
-chmod +x setup.sh
-./setup.sh --refresh-config
+./update.sh
 docker compose up -d
 ```
 
-The new setup script updates `WM_VERSION` while preserving local settings and
-data. Compose pulls missing versioned images automatically.
+Use `./update.sh --apply` to download the release files, pull images, and
+recreate changed controller services in one operation. The updater preserves
+local settings, data, secrets, and custom templates.
+
+Installations created before v0.4.0 can fetch the updater once:
+
+```bash
+curl -fL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/update.sh -o update.sh
+chmod +x update.sh
+./update.sh
+```
 
 The v0.3 networking upgrade replaces legacy app/VPN namespaces with WSLAN.
 Use **Update** once on each workstation created by an older controller. Its

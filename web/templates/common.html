@@ -18,7 +18,7 @@
 <header class="topbar">
   <a class="brand" href="/"><span class="brand-mark">W</span><span>Workstation Manager</span></a>
   {{if .User}}
-  <nav><a class="link" href="/app-store">App store</a><a class="link" href="/vpn-profiles">VPN profiles</a>{{if .User.IsAdmin}}<a class="link" href="/users">Users</a>{{end}}<span class="muted">{{.User.Username}}</span><form method="post" action="/logout"><button class="link">Log out</button></form></nav>
+  <nav><a class="link" href="/">Workstations</a><a class="link" href="/templates">Templates</a><a class="link" href="/app-store">App store</a><a class="link" href="/vpn-profiles">VPN profiles</a>{{if .User.IsAdmin}}<a class="link" href="/users">Users</a>{{end}}<span class="muted">{{.User.Username}}</span><form method="post" action="/logout"><button class="link">Log out</button></form></nav>
   {{end}}
 </header>
 {{end}}

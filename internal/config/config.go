@@ -41,7 +41,7 @@ func LoadController() (Controller, error) {
 		InstalledAppsDirectory: env("INSTALLED_APPS_DIRECTORY", "/data/apps"),
 		AppStoreDirectory:      env("APP_STORE_DIRECTORY", "/data/app-store"),
 		AppStoreIndexURL:       env("APP_STORE_INDEX_URL", "https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json"),
-		ControllerVersion:      strings.TrimPrefix(env("CONTROLLER_VERSION", "0.3.1"), "v"),
+		ControllerVersion:      strings.TrimPrefix(env("CONTROLLER_VERSION", "0.4.0"), "v"),
 		TemplatesDirectory:     env("TEMPLATES_DIRECTORY", "/config/templates"),
 		VPNProfilesDirectory:   env("VPN_PROFILES_DIRECTORY", "/data/vpn-profiles"),
 		VPNEncryptionKeyFile:   env("VPN_ENCRYPTION_KEY_FILE", "/data/vpn-profiles.key"),
@@ -82,6 +82,9 @@ type Worker struct {
 	AllowedImages     map[string]struct{}
 	WSLANImage        string
 	ApprovalsPath     string
+	LogsDirectory     string
+	LogsUID           int
+	LogsGID           int
 }
 
 func LoadWorker() (Worker, error) {
@@ -92,10 +95,16 @@ func LoadWorker() (Worker, error) {
 		ManagementNetwork: env("MANAGEMENT_NETWORK", "workstation-manager"),
 		WSLANImage:        env("WSLAN_IMAGE", "contain-yourself-wslan:dev"),
 		ApprovalsPath:     env("APP_APPROVALS_PATH", "/data/app-approvals.json"),
+		LogsDirectory:     env("WORKSTATION_LOGS_DIRECTORY", "/logs"),
+		LogsUID:           envInt("WORKSTATION_LOG_UID", -1),
+		LogsGID:           envInt("WORKSTATION_LOG_GID", -1),
 		AllowedImages:     make(map[string]struct{}),
 	}
 	if len(w.Token) < 24 {
 		return Worker{}, errors.New("WORKER_TOKEN must contain at least 24 characters")
+	}
+	if (w.LogsUID < 0) != (w.LogsGID < 0) {
+		return Worker{}, errors.New("workstation log UID and GID must be set together")
 	}
 	for _, image := range strings.Split(os.Getenv("WORKER_ALLOWED_IMAGES"), ",") {
 		if image = strings.TrimSpace(image); image != "" {

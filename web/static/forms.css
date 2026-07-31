@@ -2,15 +2,15 @@ textarea {
   width: 100%;
   padding: .78rem .85rem;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 7px;
   outline: none;
-  background: #091525;
+  background: var(--panel-soft);
   color: var(--text);
   font: inherit;
   resize: vertical;
 }
 
 textarea:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px #4db7ff20;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px #8b7cff1f;
 }

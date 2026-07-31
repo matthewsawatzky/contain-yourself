@@ -29,9 +29,10 @@ curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/d
 ```
 
 It asks whether to create a dedicated `contain-yourself/` directory, use the
-current directory, or use another path. It downloads `compose.yaml` and
-`setup.sh`, verifies and installs the core configuration bundle, generates the
-private worker token, and creates `.env`, `config/`, and `data/`.
+current directory, or use another path. It downloads `compose.yaml`,
+`setup.sh`, and `update.sh`, verifies and installs the core configuration
+bundle, generates the private worker token, and creates `.env`, `config/`, and
+`data/`.
 
 The bootstrap does not pull images or start Docker. It prints the selected
 directory and leaves the final command to you:
@@ -109,6 +110,8 @@ front, then set `SECURE_COOKIES=true`.
 - administrator-created user accounts and global profiles visible to new users
 - core desktop and terminal definitions plus installable Browser, Code, and
   Files packages
+- editable UI-managed template presets that can select any installed app
+- bounded persistent app and WSLAN logs under `data/workstation-logs/`
 - authenticated HTTP and WebSocket reverse proxy
 - expiring, use-limited workstation share links with revocation and scoped
   terminal/app/file/lifecycle permissions
@@ -145,6 +148,7 @@ workstationctl reconcile
 - [App store](app_store/README.md)
 - [Contributing an app](app_store/docs/contributing.md)
 - [Template format](docs/template-format.md)
+- [Controller UI design system](docs/ui-design-system.md)
 - [Networking and reverse proxies](docs/networking.md)
 - [VPN profiles and multi-user access](docs/vpn-profiles.md)
 - [Authentication](docs/authentication.md)

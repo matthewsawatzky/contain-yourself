@@ -84,6 +84,9 @@ must always clean up their exact IDs.
 
 - `cmd/`, `internal/`, `pkg/`, `web/`, `migrations/`: Go application source.
 - `core_apps/`, `core_templates/`: minimal definitions shipped in releases.
+
+Controller pages and app-facing visual conventions are documented in
+[Controller UI design system](ui-design-system.md).
 - `app_store/`: optional packages, schemas, contribution docs and index.
 - `build/`: development and release image definitions.
 - `deploy/`: production Compose file using versioned GHCR images.

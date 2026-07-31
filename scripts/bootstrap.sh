@@ -142,9 +142,11 @@ temporary=$(mktemp -d "$project_directory/.contain-yourself-download.XXXXXX")
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 curl -fsSL --retry 3 "$release_url/compose.yaml" -o "$temporary/compose.yaml"
 curl -fsSL --retry 3 "$release_url/setup.sh" -o "$temporary/setup.sh"
-chmod 755 "$temporary/setup.sh"
+curl -fsSL --retry 3 "$release_url/update.sh" -o "$temporary/update.sh"
+chmod 755 "$temporary/setup.sh" "$temporary/update.sh"
 mv "$temporary/compose.yaml" "$project_directory/compose.yaml"
 mv "$temporary/setup.sh" "$project_directory/setup.sh"
+mv "$temporary/update.sh" "$project_directory/update.sh"
 
 printf '%s[2/3]%s Verifying and preparing config and data...\n' "$cyan" "$reset"
 "$project_directory/setup.sh" --directory "$project_directory" >/dev/null

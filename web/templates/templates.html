@@ -1,0 +1,61 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <section class="hero compact">
+    <div><div class="eyebrow">Workspace presets</div><h1>Templates</h1><p class="lead">Templates set sensible defaults. Installed apps can still be added or removed when a workstation is launched.</p></div>
+  </section>
+  {{template "flash" .}}
+  <div class="dashboard-grid">
+    <section class="template-list">
+      {{range .Templates}}
+      <article class="panel template-card">
+        <div class="section-head">
+          <div><div class="eyebrow">{{if .Custom}}Custom template{{else}}Built in{{end}}</div><h2>{{.Name}}</h2></div>
+          <span class="status">{{if .VPNRequired}}VPN required{{else}}Direct network{{end}}</span>
+        </div>
+        <p class="muted">{{.Description}}</p>
+        <div class="template-apps">{{range .Apps}}<span>{{.}}</span>{{end}}</div>
+        <dl>
+          <div><dt>Template ID</dt><dd><code>{{.ID}}</code></dd></div>
+          <div><dt>Resources</dt><dd>{{.CPU}} CPU · {{.MemoryMB}} MB · {{.PIDLimit}} PIDs</dd></div>
+          <div><dt>Storage</dt><dd>{{if .Persistent}}Persistent{{else}}Temporary{{end}}</dd></div>
+        </dl>
+        {{if and .Custom $.User.IsAdmin}}
+        <form method="post" action="/templates/{{.ID}}/delete" data-confirm="Delete this custom template? Existing workstations are not affected.">
+          <button class="danger">Delete template</button>
+        </form>
+        {{end}}
+      </article>
+      {{end}}
+    </section>
+    {{if .User.IsAdmin}}
+    <aside class="panel sticky-panel">
+      <div class="eyebrow">Template builder</div>
+      <h2>Create or update a preset</h2>
+      <form method="post" action="/templates" class="stack">
+        <label>Name<input name="name" required maxlength="80" placeholder="Design workstation"></label>
+        <label>Template ID
+          <div class="input-prefix"><span>custom-</span><input name="id" required maxlength="24" pattern="[a-z][a-z0-9-]+" placeholder="design"></div>
+        </label>
+        <label>Description<textarea name="description" rows="3" maxlength="240" placeholder="What this preset is designed for"></textarea></label>
+        <fieldset><legend>Default apps</legend>
+          {{range .Apps}}{{if and (not .Error) .Manifest.Desktop.Visible}}<label class="check"><input type="checkbox" name="apps" value="{{.Manifest.ID}}"><span><b>{{.Manifest.Name}}</b><small>{{.Manifest.Description}}</small></span></label>{{end}}{{end}}
+        </fieldset>
+        <div class="form-row">
+          <label>CPU<input type="number" name="cpu" value="2" min="0.1" max="32" step="0.1" required></label>
+          <label>Memory (MB)<input type="number" name="memory_mb" value="4096" min="128" max="131072" required></label>
+        </div>
+        <div class="form-row">
+          <label>PID limit<input type="number" name="pid_limit" value="512" min="32" max="32768" required></label>
+          <label>Expires (hours)<input type="number" name="expires_hours" value="0" min="0"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="persistent" value="true" checked><span>Persistent workspace</span></label>
+        <label class="check"><input type="checkbox" name="vpn_required" value="true"><span>Require a WireGuard profile</span></label>
+        <button class="primary">Save template</button>
+      </form>
+      <p class="fine">Saving an existing custom ID updates that preset. Files remain visible in <code>config/templates/</code>.</p>
+    </aside>
+    {{end}}
+  </div>
+</main>
+{{template "foot" .}}

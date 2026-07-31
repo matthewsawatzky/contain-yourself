@@ -1,5 +1,9 @@
 # Contributing an app
 
+For apps that expose a web interface, see the
+[controller UI design system](../../docs/ui-design-system.md) for shared
+colors, spacing, control states, icon guidance, and base-path requirements.
+
 Contributions are normal pull requests. Add one directory beneath
 `app_store/apps` and do not change generated files by hand.
 

@@ -9,7 +9,7 @@ services:
     volumes:
       - ${DATA_DIRECTORY:?set DATA_DIRECTORY}:/data
       - ${CONFIG_DIRECTORY:?set CONFIG_DIRECTORY}/apps:/config/apps:ro
-      - ${CONFIG_DIRECTORY:?set CONFIG_DIRECTORY}/templates:/config/templates:ro
+      - ${CONFIG_DIRECTORY:?set CONFIG_DIRECTORY}/templates:/config/templates
     environment:
       CONTROLLER_LISTEN: 0.0.0.0:8080
       DATABASE_PATH: /data/controller.db
@@ -46,6 +46,7 @@ services:
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       - ${WORKER_DATA_SOURCE:-./data/worker}:/data
+      - ${DATA_DIRECTORY:?set DATA_DIRECTORY}/workstation-logs:/logs
     expose:
       - "8090"
     environment:
@@ -56,6 +57,9 @@ services:
       WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
       WSLAN_IMAGE: "${WM_IMAGE_REPOSITORY:?set WM_IMAGE_REPOSITORY}-wslan:${WM_VERSION:?set WM_VERSION}"
       APP_APPROVALS_PATH: /data/app-approvals.json
+      WORKSTATION_LOGS_DIRECTORY: /logs
+      WORKSTATION_LOG_UID: ${CONTROLLER_UID:?set CONTROLLER_UID}
+      WORKSTATION_LOG_GID: ${CONTROLLER_GID:?set CONTROLLER_GID}
     networks:
       - management
     healthcheck:

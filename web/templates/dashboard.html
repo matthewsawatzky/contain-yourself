@@ -2,7 +2,7 @@
 {{template "nav" .}}
 <main class="page">
   <section class="hero">
-    <div><div class="eyebrow">Controller</div><h1>Your workstations</h1><p class="lead">Create an isolated workspace from a reviewed template.</p></div>
+    <div><div class="eyebrow">Workspace control</div><h1>Workstations</h1><p class="lead">Launch a preset, then add any installed apps you need.</p></div>
     <div class="health-chip"><i></i> Controller online</div>
   </section>
   {{template "flash" .}}
@@ -24,8 +24,8 @@
       {{end}}
     </section>
     <aside class="panel">
-      <div class="eyebrow">New workstation</div>
-      <h2>Launch a machine</h2>
+      <div class="eyebrow">Quick deploy</div>
+      <h2>Launch workstation</h2>
       <form method="post" action="/workstations" class="stack">
         <label>Name<input name="name" required maxlength="80" placeholder="Research workspace"></label>
         <label>Template<select name="template_id" data-template-select>{{range .Templates}}<option value="{{.ID}}" data-apps="{{range .Apps}}{{.}} {{end}}" data-vpn="{{.VPNRequired}}">{{.Name}}</option>{{end}}</select></label>
@@ -36,12 +36,12 @@
           </select>
         </label>
         {{if not .VPNProfiles}}<p class="fine" data-vpn-profile>No enabled profiles. <a href="/vpn-profiles">Bring your own WireGuard profile</a>.</p>{{end}}
-        <fieldset><legend>Apps</legend>
+        <fieldset><legend>Apps · template defaults are preselected</legend>
           {{range .Apps}}{{if and (not .Error) .Manifest.Desktop.Visible}}<label class="check"><input type="checkbox" name="apps" value="{{.Manifest.ID}}"><span>{{.Manifest.Name}}</span></label>{{end}}{{end}}
         </fieldset>
         <button class="primary">Create workstation</button>
       </form>
-      <p class="fine">Container images are pulled by the isolated worker. VPN templates fail closed without a valid accessible WireGuard profile.</p>
+      <p class="fine">Every installed app can be selected. Templates provide defaults and resource limits, not a permanent app allowlist. <a href="/templates">Manage templates</a>.</p>
     </aside>
   </div>
 </main>

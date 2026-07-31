@@ -42,6 +42,9 @@ Deletion resolves exact labels, removes containers first, then only volumes
 with the same workstation labels.
 
 Logs are capped at 1,000 requested lines and 2 MiB of worker response data.
+The worker also continuously stores app, WSLAN, and network-sandbox output in
+`data/workstation-logs/<workstation-id>/`. Files remain after a workstation is
+deleted and rotate at 25 MiB with one previous file retained.
 Stats expose CPU, memory, PIDs, network and block I/O for managed containers
 only. Rebuild validates the complete provision request and pulls every image
 before deleting apps, sandboxes, WSLAN, or the private network.

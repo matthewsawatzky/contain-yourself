@@ -56,6 +56,12 @@ The release workflow:
 - retains the managed installer as a compatibility asset;
 - publishes a GitHub release with generated notes.
 
+Controller, worker, and WSLAN images build in parallel. Go compilation runs on
+the native build runner for both target architectures using `TARGETOS` and
+`TARGETARCH`; QEMU is needed only for architecture-specific runtime image
+steps. Dockerfiles copy only source inputs, so documentation and installer
+changes no longer invalidate compiled binaries.
+
 The setup script and Compose file always select a semantic release tag. The
 release policy must never republish an existing container tag; enable GitHub's
 immutable-release setting where available. Installations do not deploy from

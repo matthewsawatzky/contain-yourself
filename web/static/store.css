@@ -11,10 +11,10 @@
 
 .store-card {
   border: 1px solid var(--line);
-  background: linear-gradient(145deg, #122139e8, #0d192be8);
-  border-radius: 18px;
-  padding: 22px;
-  box-shadow: var(--shadow);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: none;
 }
 
 .store-title {
