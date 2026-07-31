@@ -54,7 +54,7 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       MANAGEMENT_NETWORK: workstation-manager
       WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
-      VPN_IMAGE: ${VPN_IMAGE:-qmcgaw/gluetun:v3.40.0}
+      WSLAN_IMAGE: "${WM_IMAGE_REPOSITORY:?set WM_IMAGE_REPOSITORY}-wslan:${WM_VERSION:?set WM_VERSION}"
       APP_APPROVALS_PATH: /data/app-approvals.json
     networks:
       - management

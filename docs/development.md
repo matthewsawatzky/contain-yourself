@@ -10,7 +10,8 @@ docker compose --env-file .env config --quiet
 ```
 
 `dev-up.sh` creates `.env`, generates a worker token, records the current host
-UID/GID for writable bind mounts, creates `data/`, builds both local images,
+UID/GID for writable bind mounts, creates `data/`, builds all three local images
+(controller, worker, and WSLAN),
 and starts Compose.
 
 No GitHub Release is involved in this workflow. A normal branch push contains
@@ -93,5 +94,5 @@ must always clean up their exact IDs.
 Build a local release asset without publishing:
 
 ```bash
-make release VERSION=v0.1.0
+make release VERSION=v0.3.0
 ```

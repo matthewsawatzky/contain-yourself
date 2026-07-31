@@ -1287,11 +1287,8 @@ func (s *Server) proxyApp(w http.ResponseWriter, r *http.Request, ws database.Wo
 		http.NotFound(w, r)
 		return
 	}
-	host := "wm-" + ws.ID + "-app-" + appID
-	if ws.VPNRequired {
-		host = "wm-" + ws.ID + "-vpn"
-	}
-	target, _ := url.Parse(fmt.Sprintf("http://%s:%d", host, app.Runtime.InternalPort))
+	host := "wm-" + ws.ID + "-wslan"
+	target, _ := url.Parse(fmt.Sprintf("http://%s:%d", host, 9000))
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	original := proxy.Director
 	proxy.Director = func(request *http.Request) {
@@ -1306,6 +1303,8 @@ func (s *Server) proxyApp(w http.ResponseWriter, r *http.Request, ws database.Wo
 			}
 		}
 		request.Header.Set("X-Workstation-ID", ws.ID)
+		request.Header.Set("X-Contain-WSLAN-Token", s.config.WorkerToken)
+		request.Header.Set("X-Contain-WSLAN-App", appID)
 	}
 	proxy.ModifyResponse = func(response *http.Response) error {
 		if explicitPrefix != "" {

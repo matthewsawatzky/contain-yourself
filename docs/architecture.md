@@ -12,19 +12,20 @@ flowchart LR
   C -->|"Bounded HTTPS sync"| CAT["Configured app-store index"]
   C -->|"Bearer token; typed requests"| W["Docker worker :8090"]
   W -->|"Unix socket"| D["Docker Engine"]
-  C -->|"Authenticated management path"| G["VPN gateway namespace"]
-  G --- T["Terminal"]
-  G --- F["Files"]
-  G --- E["Code"]
-  G --- B["Browser"]
+  C -->|"Authenticated WSLAN ingress"| G["Per-workstation WSLAN gateway"]
+  G --> N["Private internal WSLAN bridge"]
+  N --- T["Terminal sandbox + app"]
+  N --- F["Files sandbox + app"]
+  N --- E["Code sandbox + app"]
+  N --- B["Browser sandbox + app"]
   T & F & E & B --> V[("Workspace volume")]
 ```
 
-The Compose management network is shared by the controller, worker and
-dynamically-created workstation gateway containers. It is not the
-workstation's outbound network design. VPN app containers use Docker's
-`container:<gateway>` network mode, so their only network stack is the Gluetun
-gateway.
+The Compose management network is shared by the controller, worker and the
+management side of each WSLAN gateway. Every workstation also receives its own
+Docker `internal` bridge. App sandboxes attach only to that bridge, and each
+app uses `container:<sandbox>` network mode. WSLAN is therefore the sole
+forwarding path for direct or WireGuard egress.
 
 ## Trust and package boundaries
 
@@ -62,14 +63,15 @@ use compare-and-swap semantics so concurrent actions cannot silently overwrite
 one another.
 
 Creation is asynchronous. The database record and event are committed first,
-then the worker pulls approved images, creates labelled volumes and starts
-containers. The controller only marks the workstation ready after the worker
-has observed gateway and app health.
+then the worker pulls approved images, creates labelled volumes and the private
+network, starts WSLAN, starts one sandbox per app, and finally starts apps. The
+controller only marks the workstation ready after the worker has observed
+gateway and app health through WSLAN.
 
 An update follows `ready → pulling-images → creating-storage → … → ready`.
-The worker first pulls all allowlisted images, then replaces only app and VPN
-containers. Workspace, shell-home and app-data volumes keep their deterministic
-labels and survive the rebuild.
+The worker first pulls all allowlisted images, then replaces the WSLAN
+gateway, app sandboxes, apps, and private network. Workspace, shell-home and
+app-data volumes keep their deterministic labels and survive the rebuild.
 
 ## Routing
 
@@ -88,7 +90,8 @@ ws-abc123def4.workstations.example.com/apps/terminal/
 
 The controller resolves the workstation, validates the server-side session and
 ownership, checks app installation/readiness, then proxies HTTP or WebSocket
-traffic. App containers never publish host ports.
+traffic through authenticated WSLAN ingress. App containers never publish host
+ports or attach to the management network.
 
 Share traffic uses `/share/<secret>` once, then
 `/shared/<workstation-id>/...` with a path-scoped cookie. This routing surface

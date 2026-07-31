@@ -63,6 +63,12 @@ Upgrading from a release before the app store preserves Browser, Code, and
 Files definitions from the previous `config/apps` under `data/apps`, so
 existing workstations remain usable.
 
+The v0.3 networking upgrade replaces legacy app/VPN namespaces with WSLAN.
+After upgrading the controller, use **Update** once on each existing
+workstation. Its labelled volumes are preserved while the worker replaces the
+runtime containers and creates the workstation's private network. Until then,
+legacy workstations do not have the WSLAN ingress expected by v0.3.
+
 The installer also creates `wm` and `workstation-manager` links under
 `~/.local/bin`. If that directory is not on `PATH`, invoke the full
 `~/.local/share/workstation-manager/manage` path or update the shell path.

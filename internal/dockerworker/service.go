@@ -29,9 +29,10 @@ type Service struct {
 }
 
 const (
-	wireGuardSecretDirectory = "/tmp"
-	wireGuardSecretFilename  = "workstation-manager-wireguard.conf"
+	wireGuardSecretDirectory = "/run/wslan"
+	wireGuardSecretFilename  = "wg0.conf"
 	wireGuardSecretPath      = wireGuardSecretDirectory + "/" + wireGuardSecretFilename
+	wslanIngressPort         = 9000
 )
 
 var resourceID = regexp.MustCompile(`^ws-[a-z0-9]{6,20}$`)
@@ -269,12 +270,12 @@ func (s *Service) validateProvision(request workerapi.ProvisionRequest) error {
 	} else if request.VPNProfile != nil {
 		return errors.New("non-VPN workstation cannot select a VPN profile")
 	}
-	ids, ports := make(map[string]bool), make(map[int]bool)
+	ids := make(map[string]bool)
 	for _, app := range request.Apps {
-		if ids[app.ID] || ports[app.InternalPort] {
-			return errors.New("app ids and internal ports must be unique")
+		if ids[app.ID] {
+			return errors.New("app ids must be unique")
 		}
-		ids[app.ID], ports[app.InternalPort] = true, true
+		ids[app.ID] = true
 		if _, allowed := s.config.AllowedImages[app.Image]; !allowed && !s.approvals.allowed(app) {
 			return fmt.Errorf("image %q is not approved", app.Image)
 		}
@@ -359,14 +360,12 @@ func (s *Service) provisionResources(ctx context.Context, request workerapi.Prov
 }
 
 func (s *Service) prepareImages(ctx context.Context, request workerapi.ProvisionRequest) error {
+	if err := s.engine.EnsureImage(ctx, s.config.WSLANImage); err != nil {
+		return fmt.Errorf("pull WSLAN system image: %w", err)
+	}
 	for _, app := range request.Apps {
 		if err := s.engine.Pull(ctx, app.Image); err != nil {
 			return fmt.Errorf("pull app %s: %w", app.ID, err)
-		}
-	}
-	if request.VPNRequired {
-		if err := s.engine.Pull(ctx, s.config.VPNImage); err != nil {
-			return fmt.Errorf("pull VPN gateway: %w", err)
 		}
 	}
 	return nil
@@ -384,11 +383,21 @@ func (s *Service) rebuildResources(ctx context.Context, request workerapi.Provis
 		return resourceRank(resources[i].Kind) > resourceRank(resources[j].Kind)
 	})
 	for _, resource := range resources {
-		if resource.Kind != "app" && resource.Kind != "vpn" {
+		if resource.Kind != "app" && resource.Kind != "vpn" &&
+			resource.Kind != "wslan" && resource.Kind != "sandbox" {
 			continue
 		}
 		if err := s.engine.ContainerAction(ctx, resource.Name, "delete"); err != nil {
 			return fmt.Errorf("replace container %s: %w", resource.Name, err)
+		}
+	}
+	networks, err := s.engine.listManagedNetworks(ctx, request.WorkstationID)
+	if err != nil {
+		return err
+	}
+	for _, network := range networks {
+		if err := s.engine.DeleteNetwork(ctx, network); err != nil {
+			return fmt.Errorf("replace network %s: %w", network, err)
 		}
 	}
 	return s.createResources(ctx, request)
@@ -400,49 +409,89 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 	if err := s.engine.CreateVolume(ctx, workspaceVolume, labels); err != nil {
 		return fmt.Errorf("create workspace volume: %w", err)
 	}
-	networkMode := s.config.ManagementNetwork
+	wslanNetwork := name(request.WorkstationID, "wslan")
+	if err := s.engine.CreateNetwork(ctx, wslanNetwork,
+		baseLabels(request.WorkstationID, "network")); err != nil {
+		return fmt.Errorf("create WSLAN network: %w", err)
+	}
+	networkInfo, err := s.engine.InspectNetwork(ctx, wslanNetwork)
+	if err != nil {
+		return fmt.Errorf("inspect WSLAN network: %w", err)
+	}
+	appMappings := make([]string, 0, len(request.Apps))
+	for _, app := range request.Apps {
+		appMappings = append(appMappings, app.ID+"="+strconv.Itoa(app.InternalPort))
+	}
+	sort.Strings(appMappings)
+	gatewayName := name(request.WorkstationID, "wslan")
+	mode := "direct"
 	if request.VPNRequired {
-		gatewayName := name(request.WorkstationID, "vpn")
-		ports := make([]int, 0, len(request.Apps))
-		for _, app := range request.Apps {
-			ports = append(ports, app.InternalPort)
-		}
-		sort.Ints(ports)
-		portStrings := make([]string, 0, len(ports))
-		for _, port := range ports {
-			portStrings = append(portStrings, strconv.Itoa(port))
-		}
-		vpnEnvironment := map[string]string{
-			"VPN_SERVICE_PROVIDER":      "custom",
-			"VPN_TYPE":                  "wireguard",
-			"WIREGUARD_CONF_SECRETFILE": wireGuardSecretPath,
-			"FIREWALL_INPUT_PORTS":      strings.Join(portStrings, ","),
-		}
-		if err := s.engine.CreateContainer(ctx, ContainerConfig{
-			Name: gatewayName, Image: s.config.VPNImage, Environment: vpnEnvironment,
-			Labels: baseLabels(request.WorkstationID, "vpn"), NetworkMode: s.config.ManagementNetwork,
-			MemoryBytes: 512 * 1024 * 1024, NanoCPUs: 500_000_000, PIDLimit: 256,
-			CapAdd: []string{"NET_ADMIN"},
-			Devices: []map[string]string{{
-				"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm",
-			}},
-			Ports: ports,
-		}); err != nil {
-			return fmt.Errorf("create VPN gateway: %w", err)
-		}
+		mode = "wireguard"
+	}
+	gatewayConfig := ContainerConfig{
+		Name: gatewayName, Image: s.config.WSLANImage,
+		Environment: map[string]string{
+			"WSLAN_ROLE": "gateway", "WSLAN_MODE": mode,
+			"WSLAN_INTERNAL_CIDR": networkInfo.Subnet,
+			"WSLAN_TOKEN":         s.config.Token,
+			"WSLAN_APPS":          strings.Join(appMappings, ","),
+		},
+		Labels: baseLabels(request.WorkstationID, "wslan"), NetworkMode: s.config.ManagementNetwork,
+		MemoryBytes: 256 * 1024 * 1024, NanoCPUs: 500_000_000, PIDLimit: 256,
+		CapAdd: []string{"NET_ADMIN"}, Ports: []int{wslanIngressPort},
+		Sysctls: map[string]string{"net.ipv4.ip_forward": "1"},
+	}
+	if request.VPNRequired {
+		gatewayConfig.Devices = []map[string]string{{
+			"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm",
+		}}
+	}
+	if err := s.engine.CreateContainer(ctx, gatewayConfig); err != nil {
+		return fmt.Errorf("create WSLAN gateway: %w", err)
+	}
+	if err := s.engine.ConnectNetwork(ctx, wslanNetwork, gatewayName, []string{"wslan-gateway"}); err != nil {
+		return fmt.Errorf("connect WSLAN gateway: %w", err)
+	}
+	if request.VPNRequired {
 		if err := s.engine.CopyFile(ctx, gatewayName, wireGuardSecretDirectory,
 			wireGuardSecretFilename, []byte(request.VPNProfile.WireGuardConfig), 0o600); err != nil {
 			return fmt.Errorf("inject WireGuard profile: %w", err)
 		}
-		if err := s.engine.ContainerAction(ctx, gatewayName, "start"); err != nil {
-			return fmt.Errorf("start VPN gateway: %w", err)
-		}
-		if err := s.waitContainerHealthy(ctx, gatewayName, 90*time.Second); err != nil {
-			return fmt.Errorf("VPN gateway did not become healthy: %w", err)
-		}
-		networkMode = "container:" + gatewayName
+	}
+	if err := s.engine.ContainerAction(ctx, gatewayName, "start"); err != nil {
+		return fmt.Errorf("start WSLAN gateway: %w", err)
+	}
+	if err := waitHTTP(ctx, gatewayName, wslanIngressPort, "/healthz",
+		5*time.Second, 90*time.Second, nil); err != nil {
+		return fmt.Errorf("WSLAN gateway did not become healthy: %w", err)
+	}
+	networkInfo, err = s.engine.InspectNetwork(ctx, wslanNetwork)
+	if err != nil {
+		return fmt.Errorf("inspect connected WSLAN: %w", err)
+	}
+	gatewayAddress := networkInfo.Containers[gatewayName]
+	if gatewayAddress == "" {
+		return errors.New("WSLAN gateway has no internal address")
 	}
 	for _, app := range request.Apps {
+		sandboxName := name(request.WorkstationID, "net-"+app.ID)
+		sandboxLabels := baseLabels(request.WorkstationID, "sandbox")
+		sandboxLabels[workerapi.LabelAppID] = app.ID
+		if err := s.engine.CreateContainer(ctx, ContainerConfig{
+			Name: sandboxName, Image: s.config.WSLANImage,
+			Environment: map[string]string{
+				"WSLAN_ROLE": "sandbox", "WSLAN_GATEWAY": gatewayAddress,
+			},
+			Labels: sandboxLabels, NetworkMode: wslanNetwork,
+			MemoryBytes: 32 * 1024 * 1024, NanoCPUs: 50_000_000, PIDLimit: 16,
+			CapAdd: []string{"NET_ADMIN"}, DNS: []string{gatewayAddress},
+			NetworkAliases: []string{"app-" + app.ID, app.ID},
+		}); err != nil {
+			return fmt.Errorf("create network sandbox for app %s: %w", app.ID, err)
+		}
+		if err := s.engine.ContainerAction(ctx, sandboxName, "start"); err != nil {
+			return fmt.Errorf("start network sandbox for app %s: %w", app.ID, err)
+		}
 		appLabels := baseLabels(request.WorkstationID, "app")
 		appLabels[workerapi.LabelAppID] = app.ID
 		mounts := make([]Mount, 0, len(app.Storage))
@@ -462,7 +511,7 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		if err := s.engine.CreateContainer(ctx, ContainerConfig{
 			Name: name(request.WorkstationID, "app-"+app.ID), Image: app.Image,
 			Command: app.Command, Environment: app.Environment,
-			Labels: appLabels, NetworkMode: networkMode,
+			Labels: appLabels, NetworkMode: "container:" + sandboxName,
 			MemoryBytes: int64(app.MemoryMB) * 1024 * 1024,
 			NanoCPUs:    int64(app.CPU * 1_000_000_000), PIDLimit: request.PIDLimit,
 			ShmSizeBytes: int64(app.ShmSizeMB) * 1024 * 1024,
@@ -473,16 +522,17 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		if err := s.engine.ContainerAction(ctx, name(request.WorkstationID, "app-"+app.ID), "start"); err != nil {
 			return fmt.Errorf("start app %s: %w", app.ID, err)
 		}
-		host := name(request.WorkstationID, "app-"+app.ID)
-		if request.VPNRequired {
-			host = name(request.WorkstationID, "vpn")
-		}
 		if app.HealthPath != "" {
 			requestTimeout := time.Duration(app.HealthTimeoutSeconds) * time.Second
 			if requestTimeout <= 0 {
 				requestTimeout = 5 * time.Second
 			}
-			if err := waitHTTP(ctx, host, app.InternalPort, app.HealthPath, requestTimeout, 90*time.Second); err != nil {
+			headers := map[string]string{
+				"X-Contain-WSLAN-Token": s.config.Token,
+				"X-Contain-WSLAN-App":   app.ID,
+			}
+			if err := waitHTTP(ctx, gatewayName, wslanIngressPort, app.HealthPath,
+				requestTimeout, 90*time.Second, headers); err != nil {
 				return fmt.Errorf("app %s did not become healthy: %w", app.ID, err)
 			}
 		}
@@ -556,7 +606,8 @@ func (s *Service) waitContainerHealthy(ctx context.Context, name string, timeout
 	}
 }
 
-func waitHTTP(ctx context.Context, host string, port int, path string, requestTimeout, totalTimeout time.Duration) error {
+func waitHTTP(ctx context.Context, host string, port int, path string,
+	requestTimeout, totalTimeout time.Duration, headers map[string]string) error {
 	deadline := time.NewTimer(totalTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(time.Second)
@@ -566,11 +617,14 @@ func waitHTTP(ctx context.Context, host string, port int, path string, requestTi
 	var last string
 	for {
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
 		response, err := client.Do(request)
 		if err == nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 			response.Body.Close()
-			if response.StatusCode < 500 {
+			if response.StatusCode < 400 {
 				return nil
 			}
 			last = response.Status
@@ -604,22 +658,45 @@ func (s *Service) action(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: err.Error()})
 			return
 		}
-		if request.Action == "start" {
-			sort.SliceStable(resources, func(i, j int) bool {
-				return resourceRank(resources[i].Kind) < resourceRank(resources[j].Kind)
-			})
-		} else if request.Action == "stop" {
+		if request.Action == "restart" {
 			sort.SliceStable(resources, func(i, j int) bool {
 				return resourceRank(resources[i].Kind) > resourceRank(resources[j].Kind)
 			})
+			for _, resource := range resources {
+				running, _, _, stateErr := s.engine.ContainerState(r.Context(), resource.Name)
+				if stateErr != nil {
+					writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: stateErr.Error()})
+					return
+				}
+				if !running {
+					continue
+				}
+				if err := s.engine.ContainerAction(r.Context(), resource.Name, "stop"); err != nil {
+					writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: err.Error()})
+					return
+				}
+			}
+			request.Action = "start"
 		}
+		sort.SliceStable(resources, func(i, j int) bool {
+			if request.Action == "start" {
+				return resourceRank(resources[i].Kind) < resourceRank(resources[j].Kind)
+			}
+			return resourceRank(resources[i].Kind) > resourceRank(resources[j].Kind)
+		})
 		for _, resource := range resources {
 			if err := s.engine.ContainerAction(r.Context(), resource.Name, request.Action); err != nil {
 				writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: err.Error()})
 				return
 			}
-			if request.Action == "start" && resource.Kind == "vpn" {
-				if err := s.waitContainerHealthy(r.Context(), resource.Name, 90*time.Second); err != nil {
+			if request.Action == "start" && (resource.Kind == "vpn" || resource.Kind == "wslan") {
+				if resource.Kind == "wslan" {
+					err = waitHTTP(r.Context(), resource.Name, wslanIngressPort, "/healthz",
+						5*time.Second, 90*time.Second, nil)
+				} else {
+					err = s.waitContainerHealthy(r.Context(), resource.Name, 90*time.Second)
+				}
+				if err != nil {
 					writeJSON(w, http.StatusBadGateway, workerapi.Error{Error: err.Error()})
 					return
 				}
@@ -638,13 +715,16 @@ func (s *Service) action(w http.ResponseWriter, r *http.Request) {
 }
 
 func resourceRank(kind string) int {
-	if kind == "vpn" {
+	if kind == "vpn" || kind == "wslan" {
 		return 0
 	}
-	if kind == "app" {
+	if kind == "sandbox" {
 		return 1
 	}
-	return 2
+	if kind == "app" {
+		return 2
+	}
+	return 3
 }
 
 func baseLabels(workstationID, resourceType string) map[string]string {

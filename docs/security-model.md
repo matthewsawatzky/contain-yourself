@@ -20,7 +20,9 @@
   specification.
 - Host mounts, privileged containers, host namespaces, arbitrary devices and
   arbitrary capabilities are absent from the protocol.
-- VPN apps share only the Gluetun namespace, giving them no fallback host route.
+- Every workstation uses a Docker `internal` bridge. Apps attach only through
+  unprivileged per-app namespaces whose default route is the trusted WSLAN
+  gateway, giving them no fallback host route.
 - Uploaded WireGuard profiles are strictly parsed, encrypted at rest, and
   injected as a file before the VPN container starts rather than exposed in
   its environment.
@@ -52,6 +54,11 @@ third-party publishing.
 The management network is not marked `internal` because the worker must pull
 images and the controller may perform management checks. It must not be
 attached to unrelated containers.
+
+WSLAN and its tiny sandbox processes are trusted system containers built from
+this repository. Only they receive `NET_ADMIN`; app processes do not. Apps in
+one workstation share a LAN trust boundary and may connect to each other's
+declared services, but networks are isolated between workstations.
 
 An `open-apps` share grants the interaction model exposed by each selected
 third-party application; the controller cannot reliably turn a code editor

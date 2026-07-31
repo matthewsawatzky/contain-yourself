@@ -19,4 +19,5 @@ if [ ! -f .env ]; then
   chmod 600 .env
 fi
 mkdir -p data
-docker compose up -d --build
+./scripts/dev-build.sh
+docker compose up -d

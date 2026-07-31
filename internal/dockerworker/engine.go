@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +64,24 @@ func (e *Engine) Pull(ctx context.Context, image string) error {
 	return scanner.Err()
 }
 
+func (e *Engine) EnsureImage(ctx context.Context, image string) error {
+	response, err := e.request(ctx, http.MethodGet,
+		"/images/"+url.PathEscape(image)+"/json", nil)
+	if err != nil {
+		return err
+	}
+	if response.StatusCode == http.StatusOK {
+		response.Body.Close()
+		return nil
+	}
+	if response.StatusCode == http.StatusNotFound {
+		response.Body.Close()
+		return e.Pull(ctx, image)
+	}
+	defer response.Body.Close()
+	return engineError(response)
+}
+
 func (e *Engine) CreateVolume(ctx context.Context, name string, labels map[string]string) error {
 	body := map[string]any{"Name": name, "Labels": labels}
 	response, err := e.request(ctx, http.MethodPost, "/volumes/create", body)
@@ -87,22 +106,25 @@ func (e *Engine) CreateVolume(ctx context.Context, name string, labels map[strin
 }
 
 type ContainerConfig struct {
-	Name         string
-	Image        string
-	Entrypoint   []string
-	Command      []string
-	User         string
-	Environment  map[string]string
-	Labels       map[string]string
-	NetworkMode  string
-	MemoryBytes  int64
-	NanoCPUs     int64
-	PIDLimit     int
-	ShmSizeBytes int64
-	CapAdd       []string
-	Devices      []map[string]string
-	Mounts       []Mount
-	Ports        []int
+	Name           string
+	Image          string
+	Entrypoint     []string
+	Command        []string
+	User           string
+	Environment    map[string]string
+	Labels         map[string]string
+	NetworkMode    string
+	MemoryBytes    int64
+	NanoCPUs       int64
+	PIDLimit       int
+	ShmSizeBytes   int64
+	CapAdd         []string
+	Devices        []map[string]string
+	Mounts         []Mount
+	Ports          []int
+	DNS            []string
+	Sysctls        map[string]string
+	NetworkAliases []string
 }
 
 type Mount struct {
@@ -140,7 +162,16 @@ func (e *Engine) CreateContainer(ctx context.Context, config ContainerConfig) er
 			"ReadonlyRootfs": false,
 			"Devices":        config.Devices,
 			"Mounts":         mounts,
+			"Dns":            config.DNS,
+			"Sysctls":        config.Sysctls,
 		},
+	}
+	if len(config.NetworkAliases) > 0 {
+		body["NetworkingConfig"] = map[string]any{
+			"EndpointsConfig": map[string]any{
+				config.NetworkMode: map[string]any{"Aliases": config.NetworkAliases},
+			},
+		}
 	}
 	response, err := e.request(ctx, http.MethodPost,
 		"/containers/create?name="+url.QueryEscape(config.Name), body)
@@ -152,6 +183,112 @@ func (e *Engine) CreateContainer(ctx context.Context, config ContainerConfig) er
 		return e.verifyExistingContainer(ctx, config)
 	}
 	if response.StatusCode != http.StatusCreated {
+		return engineError(response)
+	}
+	return nil
+}
+
+type NetworkInfo struct {
+	Name       string
+	Subnet     string
+	Internal   bool
+	Labels     map[string]string
+	Containers map[string]string
+}
+
+func (e *Engine) CreateNetwork(ctx context.Context, name string, labels map[string]string) error {
+	body := map[string]any{
+		"Name": name, "Driver": "bridge", "Internal": true, "Attachable": false,
+		"CheckDuplicate": true, "EnableIPv6": false, "Labels": labels,
+	}
+	response, err := e.request(ctx, http.MethodPost, "/networks/create", body)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusConflict {
+		return engineError(response)
+	}
+	info, err := e.InspectNetwork(ctx, name)
+	if err != nil {
+		return err
+	}
+	if info.Name != name || !info.Internal || !containsLabels(info.Labels, labels) {
+		return fmt.Errorf("refusing to reuse network %q with mismatched settings or ownership labels", name)
+	}
+	return nil
+}
+
+func (e *Engine) InspectNetwork(ctx context.Context, name string) (NetworkInfo, error) {
+	var inspection struct {
+		Name     string            `json:"Name"`
+		Internal bool              `json:"Internal"`
+		Labels   map[string]string `json:"Labels"`
+		IPAM     struct {
+			Config []struct {
+				Subnet string `json:"Subnet"`
+			} `json:"Config"`
+		} `json:"IPAM"`
+		Containers map[string]struct {
+			Name        string `json:"Name"`
+			IPv4Address string `json:"IPv4Address"`
+		} `json:"Containers"`
+	}
+	if err := e.do(ctx, http.MethodGet, "/networks/"+url.PathEscape(name),
+		nil, &inspection, http.StatusOK); err != nil {
+		return NetworkInfo{}, err
+	}
+	info := NetworkInfo{
+		Name: inspection.Name, Internal: inspection.Internal, Labels: inspection.Labels,
+		Containers: make(map[string]string),
+	}
+	if len(inspection.IPAM.Config) > 0 {
+		info.Subnet = inspection.IPAM.Config[0].Subnet
+	}
+	for _, endpoint := range inspection.Containers {
+		info.Containers[endpoint.Name] = strings.SplitN(endpoint.IPv4Address, "/", 2)[0]
+	}
+	if info.Subnet == "" {
+		return NetworkInfo{}, fmt.Errorf("network %q has no IPv4 subnet", name)
+	}
+	return info, nil
+}
+
+func (e *Engine) ConnectNetwork(ctx context.Context, network, container string, aliases []string) error {
+	body := map[string]any{
+		"Container":      container,
+		"EndpointConfig": map[string]any{"Aliases": aliases},
+	}
+	response, err := e.request(ctx, http.MethodPost,
+		"/networks/"+url.PathEscape(network)+"/connect", body)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusConflict {
+		info, inspectErr := e.InspectNetwork(ctx, network)
+		if inspectErr == nil {
+			if _, exists := info.Containers[container]; exists {
+				return nil
+			}
+		}
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return engineError(response)
+	}
+	return nil
+}
+
+func (e *Engine) DeleteNetwork(ctx context.Context, name string) error {
+	response, err := e.request(ctx, http.MethodDelete, "/networks/"+url.PathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return engineError(response)
 	}
 	return nil
@@ -481,9 +618,21 @@ func (e *Engine) RemoveWorkstation(ctx context.Context, workstationID string) er
 	if err != nil {
 		return err
 	}
+	sort.SliceStable(resources, func(i, j int) bool {
+		return resourceRank(resources[i].Kind) > resourceRank(resources[j].Kind)
+	})
 	for _, resource := range resources {
 		if err := e.ContainerAction(ctx, resource.Name, "delete"); err != nil {
 			return fmt.Errorf("delete container %s: %w", resource.Name, err)
+		}
+	}
+	networks, err := e.listManagedNetworks(ctx, workstationID)
+	if err != nil {
+		return err
+	}
+	for _, network := range networks {
+		if err := e.DeleteNetwork(ctx, network); err != nil {
+			return fmt.Errorf("delete network %s: %w", network, err)
 		}
 	}
 	filterValue := map[string][]string{"label": {
@@ -514,6 +663,34 @@ func (e *Engine) RemoveWorkstation(ctx context.Context, workstationID string) er
 		}
 	}
 	return nil
+}
+
+func (e *Engine) listManagedNetworks(ctx context.Context, workstationID string) ([]string, error) {
+	filterValue := map[string][]string{"label": {
+		workerapi.LabelManagedBy + "=" + workerapi.ManagedByValue,
+		workerapi.LabelWorkstationID + "=" + workstationID,
+	}}
+	filters, _ := json.Marshal(filterValue)
+	response, err := e.request(ctx, http.MethodGet,
+		"/networks?filters="+url.QueryEscape(string(filters)), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, engineError(response)
+	}
+	var networks []struct {
+		Name string `json:"Name"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&networks); err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(networks))
+	for _, network := range networks {
+		result = append(result, network.Name)
+	}
+	return result, nil
 }
 
 func (e *Engine) do(ctx context.Context, method, path string, body, output any, expected int) error {

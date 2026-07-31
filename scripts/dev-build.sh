@@ -8,4 +8,4 @@ cd "$(dirname "$0")/.."
 WORKER_TOKEN=${WORKER_TOKEN:-build-only-token-not-used-at-runtime}
 export WORKER_TOKEN
 
-docker compose build "$@"
+docker compose --profile system-image build "$@"

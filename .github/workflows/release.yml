@@ -23,7 +23,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-          sh -n scripts/*.sh
+          sh -n scripts/*.sh build/wslan-entrypoint.sh
       - name: Resolve release names
         id: names
         shell: bash
@@ -61,6 +61,18 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
+      - name: Build and publish WSLAN
+        id: wslan
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          file: build/wslan.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ steps.names.outputs.repository }}-wslan:${{ steps.names.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=wslan
+          cache-to: type=gha,mode=max,scope=wslan
       - name: Attest controller image
         uses: actions/attest@v4
         with:
@@ -72,6 +84,12 @@ jobs:
         with:
           subject-name: ghcr.io/${{ steps.names.outputs.repository }}-worker
           subject-digest: ${{ steps.worker.outputs.digest }}
+          push-to-registry: true
+      - name: Attest WSLAN image
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ steps.names.outputs.repository }}-wslan
+          subject-digest: ${{ steps.wslan.outputs.digest }}
           push-to-registry: true
       - name: Build release assets
         shell: bash

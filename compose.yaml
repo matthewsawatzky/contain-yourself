@@ -19,7 +19,7 @@ services:
       INSTALLED_APPS_DIRECTORY: /data/apps
       APP_STORE_DIRECTORY: /data/app-store
       APP_STORE_INDEX_URL: ${APP_STORE_INDEX_URL:-https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json}
-      CONTROLLER_VERSION: ${WM_VERSION:-v0.2.0}
+      CONTROLLER_VERSION: ${WM_VERSION:-v0.3.0}
       TEMPLATES_DIRECTORY: /config/templates
       VPN_PROFILES_DIRECTORY: /data/vpn-profiles
       VPN_ENCRYPTION_KEY_FILE: /data/vpn-profiles.key
@@ -57,7 +57,7 @@ services:
       WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
       MANAGEMENT_NETWORK: workstation-manager
       WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
-      VPN_IMAGE: ${VPN_IMAGE:-qmcgaw/gluetun:v3.40.0}
+      WSLAN_IMAGE: ${WSLAN_IMAGE:-contain-yourself-wslan:dev}
       APP_APPROVALS_PATH: /data/app-approvals.json
     networks:
       - management
@@ -69,6 +69,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+
+  wslan-image:
+    image: "${WSLAN_IMAGE:-contain-yourself-wslan:dev}"
+    build:
+      context: .
+      dockerfile: build/wslan.Dockerfile
+    profiles:
+      - system-image
 
 networks:
   management:

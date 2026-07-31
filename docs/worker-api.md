@@ -44,14 +44,12 @@ with the same workstation labels.
 Logs are capped at 1,000 requested lines and 2 MiB of worker response data.
 Stats expose CPU, memory, PIDs, network and block I/O for managed containers
 only. Rebuild validates the complete provision request and pulls every image
-before deleting an app or VPN container.
+before deleting apps, sandboxes, WSLAN, or the private network.
 
 VPN provision requests contain the selected canonical WireGuard configuration.
 It crosses only the authenticated internal controller-to-worker connection.
-The worker validates it again, creates a custom-provider Gluetun container,
-and uploads it as the mode-`0600`
-`/tmp/workstation-manager-wireguard.conf` before container start. Gluetun is
-explicitly pointed at that secret file. The private key is therefore absent
-from the container environment and Docker inspect output. Workstation apps do
-not share the gateway filesystem. There is no generic file-upload or arbitrary
-Docker archive endpoint.
+The worker validates it again, creates the repository-built WSLAN gateway, and
+uploads it as the mode-`0600` `/run/wslan/wg0.conf` before container start.
+The private key is therefore absent from the container environment and app
+containers do not share the gateway filesystem. There is no generic file
+upload or arbitrary Docker archive endpoint.

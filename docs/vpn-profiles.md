@@ -39,14 +39,12 @@ commands such as `PreUp` and `PostUp`, unknown directives, invalid keys,
 split-tunnel-only routes, and hostname endpoints. It encrypts the result with
 AES-GCM. At provisioning time it decrypts the selected profile and sends it
 over the authenticated internal worker connection. The worker validates it
-again and uploads it to the new Gluetun container as the mode-`0600` file
-`/tmp/workstation-manager-wireguard.conf` before start. Gluetun reads that path
-through `WIREGUARD_CONF_SECRETFILE`.
+again and uploads it to the workstation's WSLAN gateway as the mode-`0600`
+file `/run/wslan/wg0.conf` before start. The custom WSLAN image brings it up
+with `wg-quick`; the private key is absent from Docker environment variables.
 
-Gluetun's custom WireGuard setup currently requires an endpoint IP address
-rather than a hostname. See the upstream
-[custom provider setup](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/custom.md)
-and [WireGuard options](https://github.com/qdm12/gluetun-wiki/blob/main/setup/options/wireguard.md).
+Profiles currently require an endpoint IP address rather than a hostname so
+the tunnel can start without a pre-tunnel DNS dependency.
 
 Keep `vpn-profiles.key` and the encrypted files together when backing up, and
 protect the backup as credentials. Encryption prevents accidental plaintext

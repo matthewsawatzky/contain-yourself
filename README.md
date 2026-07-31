@@ -95,7 +95,8 @@ front, then set `SECURE_COOKIES=true`.
 - pull-request-friendly app-store packages, schemas, deterministic integrity
   metadata, and a generated compact catalogue
 - deterministic, labelled Docker resources and an image allowlist
-- optional Gluetun network namespace with kill switch and readiness gating
+- per-workstation WSLAN with isolated app namespaces, stable service DNS,
+  direct or fail-closed WireGuard egress, and authenticated ingress
 - encrypted WireGuard profiles with global and per-user private catalogues
 - administrator-created user accounts and global profiles visible to new users
 - core desktop and terminal definitions plus installable Browser, Code, and

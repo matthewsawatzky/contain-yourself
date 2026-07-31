@@ -149,12 +149,23 @@ func TestVPNProfileMustContainSafeWireGuardConfiguration(t *testing.T) {
 	}
 }
 
-func TestWireGuardConfigurationUsesGluetunSecretFile(t *testing.T) {
-	if wireGuardSecretPath != "/tmp/workstation-manager-wireguard.conf" {
+func TestWireGuardConfigurationUsesWSLANSecretFile(t *testing.T) {
+	if wireGuardSecretPath != "/run/wslan/wg0.conf" {
 		t.Fatalf("WireGuard secret path = %q", wireGuardSecretPath)
 	}
 	if wireGuardSecretDirectory+"/"+wireGuardSecretFilename != wireGuardSecretPath {
-		t.Fatal("WireGuard copy target and Gluetun secret path diverged")
+		t.Fatal("WireGuard copy target and WSLAN secret path diverged")
+	}
+}
+
+func TestProvisionAllowsAppsToReusePorts(t *testing.T) {
+	service := testService()
+	request := validProvision()
+	second := request.Apps[0]
+	second.ID = "browser"
+	request.Apps = append(request.Apps, second)
+	if err := service.validateProvision(request); err != nil {
+		t.Fatalf("apps in separate WSLAN sandboxes could not reuse a port: %v", err)
 	}
 }
 
