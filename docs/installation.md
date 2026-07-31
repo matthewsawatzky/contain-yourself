@@ -1,20 +1,26 @@
 # Installation and upgrades
 
-## Download the Compose project
+## Interactive setup
 
 Requirements are Docker Engine 24+ and Docker Compose v2. Start from a
 directory you own and can access:
 
 ```bash
-mkdir contain-yourself
-cd contain-yourself
-curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
-curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
-chmod +x setup.sh
-./setup.sh
+curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/bootstrap.sh | sh
 ```
 
-The setup script performs host-file preparation only. It:
+The bootstrap reads its questions from the terminal even though the script
+itself is piped through `sh`. It offers three choices:
+
+1. create `contain-yourself/` inside the current directory (recommended);
+2. use the current directory;
+3. enter another path.
+
+If the current directory is inaccessible, it safely offers your home
+directory instead. It warns before adding files to a non-empty directory.
+
+The bootstrap downloads `compose.yaml` and `setup.sh`. The setup script then
+performs host-file preparation only. It:
 
 1. downloads the configuration bundle for the exact release embedded in the
    script;
@@ -27,6 +33,7 @@ The setup script performs host-file preparation only. It:
 Review `compose.yaml` and `.env`, then start it yourself:
 
 ```bash
+cd /the/project/directory
 docker compose up -d
 ```
 
@@ -35,6 +42,24 @@ GHCR. The prebuilt images cover `linux/amd64` and `linux/arm64`, including the
 Linux container environments used by Intel and Apple Silicon Docker Desktop.
 
 Open <http://127.0.0.1:8080> and create the first administrator.
+
+## Manual download
+
+To avoid piping a script into a shell, download and inspect the two files
+yourself:
+
+```bash
+mkdir contain-yourself
+cd contain-yourself
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
+curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
+chmod +x setup.sh
+./setup.sh
+```
+
+When run without `--directory`, `setup.sh` confirms whether its current
+directory is the project directory and can create a dedicated subdirectory
+instead. Use `./setup.sh --directory /chosen/path` for automation.
 
 ## Local layout
 

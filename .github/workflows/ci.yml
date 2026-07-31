@@ -28,6 +28,7 @@ jobs:
       - name: Validate shell scripts
         run: |
           sh -n scripts/*.sh build/wslan-entrypoint.sh
+          test -x scripts/bootstrap.sh
           test -x scripts/install.sh
           test -x scripts/manage.sh
           test -x scripts/release.sh
@@ -46,6 +47,7 @@ jobs:
             scripts/setup.sh >"$project/setup.sh"
           chmod 755 "$project/setup.sh"
           "$project/setup.sh" \
+            --directory "$project" \
             --bundle "$PWD/dist/workstation-manager-bundle.tar.gz"
           test -f "$project/.env"
           test -d "$project/config/apps"
@@ -55,6 +57,30 @@ jobs:
             --project-directory "$project" \
             --env-file "$project/.env" \
             -f "$project/compose.yaml" config --quiet
+      - name: Validate bootstrap installer
+        shell: bash
+        run: |
+          assets=$(mktemp -d)
+          project=$(mktemp -d)
+          cp deploy/compose.yaml "$assets/compose.yaml"
+          cp dist/workstation-manager-bundle.tar.gz* "$assets/"
+          sed \
+            -e 's|@GITHUB_REPOSITORY@|example/contain-yourself|g' \
+            -e 's|@RELEASE_VERSION@|v0.0.0|g' \
+            scripts/setup.sh >"$assets/setup.sh"
+          sed \
+            -e 's|@GITHUB_REPOSITORY@|example/contain-yourself|g' \
+            -e 's|@RELEASE_VERSION@|v0.0.0|g' \
+            scripts/bootstrap.sh >"$assets/bootstrap.sh"
+          chmod 755 "$assets/setup.sh" "$assets/bootstrap.sh"
+          WM_RELEASE_BASE_URL="file://$assets" \
+            "$assets/bootstrap.sh" --directory "$project"
+          test -f "$project/compose.yaml"
+          test -x "$project/setup.sh"
+          test -f "$project/.env"
+          test -d "$project/config/apps"
+          test -d "$project/data/worker"
+          test -z "$(docker compose -f "$project/compose.yaml" ps --status running -q)"
       - name: Validate release Compose file
         run: |
           WM_IMAGE_REPOSITORY=ghcr.io/example/workstation-manager \

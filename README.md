@@ -17,28 +17,27 @@ browser ──HTTP──> controller ──narrow API──> docker-worker ─�
 No reverse proxy is bundled. The default URL is
 <http://127.0.0.1:8080>.
 
-## Compose installation
+## Quick installation
 
 Requirements: Docker Engine 24+ with Compose v2, Linux host support for
 `/dev/net/tun` when using VPN workstations, and enough disk for selected images.
 
-Create a directory you own, download the two release files, and prepare its
-local folders:
+Run the interactive bootstrap from any accessible directory:
 
 ```bash
-mkdir contain-yourself
-cd contain-yourself
-curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/compose.yaml
-curl -fLO https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/setup.sh
-chmod +x setup.sh
-./setup.sh
+curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/bootstrap.sh | sh
 ```
 
-`setup.sh` verifies and installs the small core configuration bundle, generates
-the private worker token, and creates `.env`, `config/`, and `data/`. It does
-not pull images or start a service. Review the files, then run:
+It asks whether to create a dedicated `contain-yourself/` directory, use the
+current directory, or use another path. It downloads `compose.yaml` and
+`setup.sh`, verifies and installs the core configuration bundle, generates the
+private worker token, and creates `.env`, `config/`, and `data/`.
+
+The bootstrap does not pull images or start Docker. It prints the selected
+directory and leaves the final command to you:
 
 ```bash
+cd contain-yourself
 docker compose up -d
 ```
 

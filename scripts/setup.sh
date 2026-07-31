@@ -8,6 +8,7 @@ version=${WM_VERSION:-$default_version}
 project_directory=
 local_bundle=
 refresh_config=false
+assume_yes=false
 
 die() {
   printf 'contain-yourself setup: %s\n' "$*" >&2
@@ -21,11 +22,12 @@ Usage: ./setup.sh [options]
 Prepares a user-owned Compose directory without starting Docker.
 
 Options:
-  --directory PATH       Directory containing compose.yaml (default: script directory)
+  --directory PATH       Directory to prepare
   --repository OWNER/REPO
   --version vMAJOR.MINOR.PATCH
   --bundle PATH          Use a local release bundle for testing
   --refresh-config       Refresh shipped core app/template files
+  -y, --yes              Use the script directory without prompting
   -h, --help             Show this help
 EOF
 }
@@ -56,6 +58,10 @@ while [ "$#" -gt 0 ]; do
       refresh_config=true
       shift
       ;;
+    -y|--yes)
+      assume_yes=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -77,13 +83,49 @@ if [ -n "$local_bundle" ]; then
   esac
 fi
 
+script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) ||
+  die "the setup script directory is inaccessible; create a new project directory under your home folder"
+
 if [ -z "$project_directory" ]; then
-  project_directory=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) ||
-    die "the setup script directory is inaccessible; create a new project directory under your home folder"
+  project_directory=$script_directory
+  if [ "$assume_yes" = false ] && [ -t 1 ] && [ -r /dev/tty ]; then
+    printf '\nContain Yourself will keep its compose.yaml, .env, config/, and data/\n'
+    printf 'together in one project directory.\n\n'
+    printf 'Use this directory?\n  %s\n' "$script_directory"
+    printf 'Continue here? [Y/n] '
+    if IFS= read -r answer </dev/tty; then
+      case "$answer" in
+        n|N|no|NO|No)
+          printf 'New directory [%s/contain-yourself]: ' "$script_directory"
+          IFS= read -r chosen </dev/tty || chosen=
+          if [ -z "$chosen" ]; then
+            project_directory="$script_directory/contain-yourself"
+          else
+            case "$chosen" in
+              "~") project_directory=${HOME:?HOME is not set} ;;
+              "~/"*) project_directory="${HOME:?HOME is not set}/${chosen#\~/}" ;;
+              /*) project_directory=$chosen ;;
+              *) project_directory="$script_directory/$chosen" ;;
+            esac
+          fi
+          ;;
+      esac
+    fi
+  fi
 fi
 mkdir -p "$project_directory"
 project_directory=$(CDPATH= cd -- "$project_directory" 2>/dev/null && pwd -P) ||
   die "cannot access project directory: $project_directory"
+
+if [ "$project_directory" != "$script_directory" ]; then
+  [ -f "$script_directory/compose.yaml" ] ||
+    die "compose.yaml is missing beside setup.sh in $script_directory"
+  cp "$script_directory/compose.yaml" "$project_directory/compose.yaml"
+  if [ -f "$script_directory/setup.sh" ]; then
+    cp "$script_directory/setup.sh" "$project_directory/setup.sh"
+    chmod 755 "$project_directory/setup.sh"
+  fi
+fi
 cd "$project_directory"
 
 [ -f compose.yaml ] ||
@@ -107,10 +149,10 @@ if [ -n "$local_bundle" ]; then
   [ -f "$local_bundle" ] || die "bundle does not exist: $local_bundle"
   cp "$local_bundle" "$archive"
 else
-  release_url="https://github.com/$repository/releases/download/$version"
+  release_url=${WM_RELEASE_BASE_URL:-"https://github.com/$repository/releases/download/$version"}
   printf 'Downloading configuration for Contain Yourself %s...\n' "$version"
-  curl -fL --retry 3 "$release_url/workstation-manager-bundle.tar.gz" -o "$archive"
-  curl -fL --retry 3 "$release_url/workstation-manager-bundle.tar.gz.sha256" \
+  curl -fsSL --retry 3 "$release_url/workstation-manager-bundle.tar.gz" -o "$archive"
+  curl -fsSL --retry 3 "$release_url/workstation-manager-bundle.tar.gz.sha256" \
     -o "$temporary/checksum"
   expected=$(awk '$2 == "workstation-manager-bundle.tar.gz" {print $1}' "$temporary/checksum")
   [ -n "$expected" ] || die "release checksum is malformed"

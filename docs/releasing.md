@@ -52,6 +52,7 @@ The release workflow:
 - creates image provenance attestations;
 - packages the production Compose file and default config catalogue;
 - generates a repository/version-specific directory setup script;
+- publishes a terminal-aware bootstrap for the one-line install path;
 - retains the managed installer as a compatibility asset;
 - publishes a GitHub release with generated notes.
 
