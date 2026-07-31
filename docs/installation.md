@@ -5,7 +5,7 @@
 Each tagged GitHub release contains a repository-specific installer:
 
 ```bash
-curl -fsSL https://github.com/OWNER/REPOSITORY/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/install.sh | sh
 ```
 
 It requires Docker Engine and Docker Compose v2. It does not require Git, Go,

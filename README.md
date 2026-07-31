@@ -25,13 +25,13 @@ Requirements: Docker Engine 24+ with Compose v2, Linux host support for
 After the repository has published its first GitHub release, installation is:
 
 ```bash
-curl -fsSL https://github.com/OWNER/REPOSITORY/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/matthewsawatzky/contain-yourself/releases/latest/download/install.sh | sh
 ```
 
-The release workflow replaces `OWNER/REPOSITORY` inside the downloaded
-installer, so users do not pass repository names, tokens, paths, or image tags.
-The installer verifies the release bundle, generates the worker token, creates
-the installation folders, pulls the controller and worker from GitHub
+The release workflow bakes the repository identity into the downloaded
+installer, so users do not pass repository names, tokens, paths, or image
+tags. The installer verifies the release bundle, generates the worker token,
+creates the installation folders, pulls the controller and worker from GitHub
 Container Registry, and starts Compose.
 
 Open <http://127.0.0.1:8080> and create the initial administrator. The
@@ -64,8 +64,8 @@ repository and let Docker build the controller and worker for the local Docker
 platform:
 
 ```bash
-git clone https://github.com/OWNER/REPOSITORY.git
-cd REPOSITORY
+git clone https://github.com/matthewsawatzky/contain-yourself.git
+cd contain-yourself
 ./scripts/dev-up.sh
 ```
 

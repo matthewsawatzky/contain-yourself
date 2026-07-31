@@ -34,7 +34,7 @@ The release workflow:
 - tests the tagged commit;
 - builds Linux AMD64 and ARM64 controller/worker images;
 - publishes the exact version tag under
-  `ghcr.io/OWNER/REPOSITORY-{controller,worker}`;
+  `ghcr.io/matthewsawatzky/contain-yourself-{controller,worker}`;
 - creates image provenance attestations;
 - packages the production Compose file and default config catalogue;
 - generates and uploads the repository-specific installer;
