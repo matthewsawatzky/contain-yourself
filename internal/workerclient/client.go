@@ -33,6 +33,13 @@ func (c *Client) Health(ctx context.Context) error {
 	return c.do(ctx, http.MethodGet, "/healthz", nil, &health)
 }
 
+func (c *Client) ApproveApp(ctx context.Context, app workerapi.AppSpec) (workerapi.AppApprovalStatus, error) {
+	var status workerapi.AppApprovalStatus
+	err := c.do(ctx, http.MethodPost, "/v1/apps/approve",
+		workerapi.AppApproval{App: app}, &status)
+	return status, err
+}
+
 func (c *Client) Provision(ctx context.Context, request workerapi.ProvisionRequest) (workerapi.WorkstationStatus, error) {
 	var status workerapi.WorkstationStatus
 	err := c.do(ctx, http.MethodPost, "/v1/workstations", request, &status)

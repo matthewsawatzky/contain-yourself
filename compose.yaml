@@ -10,12 +10,16 @@ services:
       - "${CONTROLLER_BIND:-127.0.0.1}:8080:8080"
     volumes:
       - ${DATA_DIRECTORY:-./data}:/data
-      - ${CONFIG_DIRECTORY:-.}/apps:/config/apps:ro
-      - ${CONFIG_DIRECTORY:-.}/templates:/config/templates:ro
+      - ./core_apps:/config/apps:ro
+      - ./core_templates:/config/templates:ro
     environment:
       CONTROLLER_LISTEN: 0.0.0.0:8080
       DATABASE_PATH: /data/controller.db
       APPS_DIRECTORY: /config/apps
+      INSTALLED_APPS_DIRECTORY: /data/apps
+      APP_STORE_DIRECTORY: /data/app-store
+      APP_STORE_INDEX_URL: ${APP_STORE_INDEX_URL:-https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json}
+      CONTROLLER_VERSION: ${WM_VERSION:-v0.2.0}
       TEMPLATES_DIRECTORY: /config/templates
       VPN_PROFILES_DIRECTORY: /data/vpn-profiles
       VPN_ENCRYPTION_KEY_FILE: /data/vpn-profiles.key
@@ -45,6 +49,7 @@ services:
       dockerfile: build/worker.Dockerfile
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - worker-data:/data
     expose:
       - "8090"
     environment:
@@ -53,6 +58,7 @@ services:
       MANAGEMENT_NETWORK: workstation-manager
       WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
       VPN_IMAGE: ${VPN_IMAGE:-qmcgaw/gluetun:v3.40.0}
+      APP_APPROVALS_PATH: /data/app-approvals.json
     networks:
       - management
     healthcheck:
@@ -68,3 +74,6 @@ networks:
   management:
     name: workstation-manager
     internal: false
+
+volumes:
+  worker-data:

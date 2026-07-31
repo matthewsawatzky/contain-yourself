@@ -2,18 +2,27 @@ package dockerworker
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"workstation-manager/internal/config"
 	"workstation-manager/pkg/workerapi"
 )
 
 func testService() *Service {
-	return NewService(config.Worker{
+	service, err := NewService(config.Worker{
 		Token:         "abcdefghijklmnopqrstuvwxyz012345",
 		AllowedImages: map[string]struct{}{"example/app:1.0.0": {}},
+		ApprovalsPath: filepath.Join(os.TempDir(), "contain-yourself-test-approvals", strconv.FormatInt(time.Now().UnixNano(), 10)+".json"),
 	}, nil, slog.Default())
+	if err != nil {
+		panic(err)
+	}
+	return service
 }
 
 func TestDecodeDockerLogStream(t *testing.T) {
@@ -76,6 +85,42 @@ func TestProvisionRejectsUnapprovedImageHostPathAndCapability(t *testing.T) {
 	request.Apps[0].ShmSizeMB = 2048
 	if service.validateProvision(request) == nil {
 		t.Fatal("shared memory larger than app memory was accepted")
+	}
+}
+
+func TestStoreApprovalIsScopedToExactAppSpecificationAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "approvals.json")
+	service, err := NewService(config.Worker{
+		Token: "abcdefghijklmnopqrstuvwxyz012345", AllowedImages: map[string]struct{}{},
+		ApprovalsPath: path,
+	}, nil, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := validProvision()
+	request.Apps[0].Image = "example/community:2.0.0"
+	request.Apps[0].Version = "2.0.0"
+	request.Apps[0].ManifestSHA256 = strings.Repeat("a", 64)
+	if service.validateProvision(request) == nil {
+		t.Fatal("dynamic image was accepted before approval")
+	}
+	if _, err := service.approvals.approve(request.Apps[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.validateProvision(request); err != nil {
+		t.Fatalf("approved app was rejected: %v", err)
+	}
+	request.Apps[0].Command = []string{"different"}
+	if service.validateProvision(request) == nil {
+		t.Fatal("approval accepted a modified app specification")
+	}
+	reloaded, err := newApprovalStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Apps[0].Command = nil
+	if !reloaded.allowed(request.Apps[0]) {
+		t.Fatal("approval did not persist")
 	}
 }
 

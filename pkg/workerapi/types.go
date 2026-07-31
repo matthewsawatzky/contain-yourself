@@ -23,6 +23,8 @@ type Health struct {
 
 type AppSpec struct {
 	ID                   string            `json:"id"`
+	Version              string            `json:"version,omitempty"`
+	ManifestSHA256       string            `json:"manifest_sha256,omitempty"`
 	Image                string            `json:"image"`
 	Command              []string          `json:"command,omitempty"`
 	Environment          map[string]string `json:"environment,omitempty"`
@@ -34,6 +36,21 @@ type AppSpec struct {
 	Storage              []StorageSpec     `json:"storage,omitempty"`
 	HealthPath           string            `json:"health_path,omitempty"`
 	HealthTimeoutSeconds int               `json:"health_timeout_seconds,omitempty"`
+}
+
+// AppApproval is the complete, narrowly scoped app specification an
+// administrator approved through the controller app store.
+type AppApproval struct {
+	App AppSpec `json:"app"`
+}
+
+type AppApprovalStatus struct {
+	ID             string    `json:"id"`
+	Version        string    `json:"version"`
+	Image          string    `json:"image"`
+	ManifestSHA256 string    `json:"manifest_sha256"`
+	Specification  string    `json:"specification_sha256"`
+	ApprovedAt     time.Time `json:"approved_at"`
 }
 
 type StorageSpec struct {

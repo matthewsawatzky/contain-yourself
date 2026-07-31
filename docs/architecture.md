@@ -8,6 +8,8 @@ flowchart LR
   RP["Optional reverse proxy"] --> C
   C --> DB[("SQLite /data/controller.db")]
   C --> VP[("Encrypted WireGuard profiles /data/vpn-profiles")]
+  C --> AS[("Verified app packages /data/apps")]
+  C -->|"Bounded HTTPS sync"| CAT["Configured app-store index"]
   C -->|"Bearer token; typed requests"| W["Docker worker :8090"]
   W -->|"Unix socket"| D["Docker Engine"]
   C -->|"Authenticated management path"| G["VPN gateway namespace"]
@@ -30,12 +32,20 @@ gateway.
 - `internal/workstations`: explicit state transition rules.
 - `internal/database`: all persistence and migrations.
 - `internal/manifests` and `internal/templates`: strict configuration scanners.
+- `internal/appstore`: bounded catalogue sync, content verification, version
+  activation and rollback.
 - `internal/workerclient`: only controller-to-worker protocol knowledge.
 - `internal/dockerworker`: Docker Engine access and resource validation.
 - `pkg/workerapi`: small shared request/response types.
 
 The controller binary cannot access the Docker socket. The worker does not
 contain user authentication, UI, SQLite, or a shell/exec endpoint.
+
+Core Desktop and Terminal packages are read-only release configuration.
+Optional packages are downloaded into controller data only after the catalogue
+index, bundle metadata and every payload hash validate. The worker persists a
+second approval for the exact runtime specification before the controller
+activates a store package.
 
 ## Lifecycle
 

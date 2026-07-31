@@ -1,6 +1,8 @@
 # Template format
 
-Templates are presets in `templates/*.yaml`; they all use the same lifecycle.
+Core templates are presets in `core_templates/*.yaml`; they all use the same
+lifecycle. Optional examples live in `example_templates/` and are valid only
+after their referenced store apps are installed.
 
 ```yaml
 schema_version: 1

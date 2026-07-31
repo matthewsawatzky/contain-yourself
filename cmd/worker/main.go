@@ -25,7 +25,11 @@ func main() {
 		os.Exit(1)
 	}
 	engine := dockerworker.NewEngine(cfg.DockerSocket)
-	service := dockerworker.NewService(cfg, engine, logger)
+	service, err := dockerworker.NewService(cfg, engine, logger)
+	if err != nil {
+		logger.Error("initialize worker", "error", err)
+		os.Exit(1)
+	}
 	server := &http.Server{
 		Addr: cfg.Listen, Handler: service.Handler(),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,

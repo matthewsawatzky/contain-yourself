@@ -192,6 +192,52 @@ func (s *Server) apiApps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.apps.Entries())
 }
 
+func (s *Server) apiAppStore(w http.ResponseWriter, r *http.Request) {
+	views, status, err := s.store.Views()
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": err.Error(), "sync": status, "apps": []any{},
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sync": status, "apps": views})
+}
+
+func (s *Server) apiAppStoreSync(w http.ResponseWriter, r *http.Request) {
+	index, err := s.store.Sync(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, index)
+}
+
+func (s *Server) apiAppStoreInstall(w http.ResponseWriter, r *http.Request) {
+	record, err := s.store.Install(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.rescan(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (s *Server) apiAppStoreRollback(w http.ResponseWriter, r *http.Request) {
+	record, err := s.store.Rollback(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.rescan(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
 func (s *Server) apiTemplates(w http.ResponseWriter, r *http.Request) {
 	s.registryMu.RLock()
 	defer s.registryMu.RUnlock()

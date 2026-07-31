@@ -23,12 +23,6 @@ store:
 
 store-check:
 	go run ./cmd/storectl check
-	diff -u apps/browser/app.yaml app_store/apps/browser/app.yaml
-	diff -u apps/browser/icon.svg app_store/apps/browser/icon.svg
-	diff -u apps/code/app.yaml app_store/apps/code/app.yaml
-	diff -u apps/code/icon.svg app_store/apps/code/icon.svg
-	diff -u apps/files/app.yaml app_store/apps/files/app.yaml
-	diff -u apps/files/icon.svg app_store/apps/files/icon.svg
 
 up:
 	./scripts/dev-up.sh

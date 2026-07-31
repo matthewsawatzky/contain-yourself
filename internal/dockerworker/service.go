@@ -22,9 +22,10 @@ import (
 )
 
 type Service struct {
-	config config.Worker
-	engine *Engine
-	log    *slog.Logger
+	config    config.Worker
+	engine    *Engine
+	log       *slog.Logger
+	approvals *approvalStore
 }
 
 const (
@@ -35,13 +36,18 @@ const (
 
 var resourceID = regexp.MustCompile(`^ws-[a-z0-9]{6,20}$`)
 
-func NewService(cfg config.Worker, engine *Engine, logger *slog.Logger) *Service {
-	return &Service{config: cfg, engine: engine, log: logger}
+func NewService(cfg config.Worker, engine *Engine, logger *slog.Logger) (*Service, error) {
+	approvals, err := newApprovalStore(cfg.ApprovalsPath)
+	if err != nil {
+		return nil, fmt.Errorf("open app approvals: %w", err)
+	}
+	return &Service{config: cfg, engine: engine, log: logger, approvals: approvals}, nil
 }
 
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.Handle("POST /v1/apps/approve", s.auth(http.HandlerFunc(s.approveApp)))
 	mux.Handle("GET /v1/resources", s.auth(http.HandlerFunc(s.list)))
 	mux.Handle("GET /v1/workstations/{id}", s.auth(http.HandlerFunc(s.inspect)))
 	mux.Handle("GET /v1/workstations/{id}/usage", s.auth(http.HandlerFunc(s.usage)))
@@ -50,6 +56,30 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("POST /v1/workstations/{id}/rebuild", s.auth(http.HandlerFunc(s.rebuild)))
 	mux.Handle("POST /v1/workstations/{id}/action", s.auth(http.HandlerFunc(s.action)))
 	return requestLog(s.log, mux)
+}
+
+func (s *Service) approveApp(w http.ResponseWriter, r *http.Request) {
+	var request workerapi.AppApproval
+	if err := decodeJSON(w, r, &request); err != nil {
+		return
+	}
+	if err := s.validateApp(request.App, 32, 131072); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, workerapi.Error{Error: err.Error()})
+		return
+	}
+	if request.App.Version == "" || request.App.ManifestSHA256 == "" ||
+		!regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`).MatchString(request.App.Version) ||
+		!regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(request.App.ManifestSHA256) {
+		writeJSON(w, http.StatusUnprocessableEntity,
+			workerapi.Error{Error: "version and manifest SHA-256 are required"})
+		return
+	}
+	status, err := s.approvals.approve(request.App)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, workerapi.Error{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, status)
 }
 
 func (s *Service) auth(next http.Handler) http.Handler {
@@ -241,60 +271,84 @@ func (s *Service) validateProvision(request workerapi.ProvisionRequest) error {
 	}
 	ids, ports := make(map[string]bool), make(map[int]bool)
 	for _, app := range request.Apps {
-		if !regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`).MatchString(app.ID) {
-			return fmt.Errorf("invalid app id %q", app.ID)
-		}
 		if ids[app.ID] || ports[app.InternalPort] {
 			return errors.New("app ids and internal ports must be unique")
 		}
 		ids[app.ID], ports[app.InternalPort] = true, true
-		if _, allowed := s.config.AllowedImages[app.Image]; !allowed {
+		if _, allowed := s.config.AllowedImages[app.Image]; !allowed && !s.approvals.allowed(app) {
 			return fmt.Errorf("image %q is not approved", app.Image)
 		}
-		if app.InternalPort < 1024 || app.InternalPort > 65535 {
-			return fmt.Errorf("app %s has an invalid internal port", app.ID)
-		}
-		if app.CPU <= 0 || app.CPU > request.CPU || app.MemoryMB < 64 || app.MemoryMB > request.MemoryMB {
-			return fmt.Errorf("app %s resource limits are invalid", app.ID)
-		}
-		if app.ShmSizeMB < 0 || app.ShmSizeMB > 2048 || app.ShmSizeMB > app.MemoryMB {
-			return fmt.Errorf("app %s shared memory limit is invalid", app.ID)
-		}
-		allowedEnvironment := map[string]bool{
-			"PUID": true, "PGID": true, "TZ": true, "HARDEN_DESKTOP": true,
-			"DISABLE_OPEN_TOOLS": true, "DISABLE_SUDO": true,
-			"DISABLE_TERMINALS": true, "CHROME_CLI": true,
-		}
-		for key, value := range app.Environment {
-			if !allowedEnvironment[key] || len(value) > 512 ||
-				strings.ContainsAny(value, "\r\n\x00") {
-				return fmt.Errorf("app %s environment is invalid", app.ID)
-			}
-		}
-		for _, capability := range app.Capabilities {
-			if capability != "NET_RAW" {
-				return fmt.Errorf("app capability %q is not approved", capability)
-			}
-		}
-		if app.HealthPath != "" && (!strings.HasPrefix(app.HealthPath, "/") || strings.Contains(app.HealthPath, "..")) {
-			return fmt.Errorf("app %s health path is invalid", app.ID)
-		}
-		for _, storage := range app.Storage {
-			if storage.Type != "workspace" && storage.Type != "app-data" &&
-				storage.Type != "shell-home" && storage.Type != "temporary" {
-				return fmt.Errorf("storage type %q is not approved", storage.Type)
-			}
-			if !filepath.IsAbs(storage.Target) || strings.Contains(filepath.Clean(storage.Target), "..") {
-				return fmt.Errorf("storage target %q is invalid", storage.Target)
-			}
-			if storage.OwnerUID < 0 || storage.OwnerUID > 65535 ||
-				storage.OwnerGID < 0 || storage.OwnerGID > 65535 ||
-				(storage.OwnerUID == 0) != (storage.OwnerGID == 0) {
-				return fmt.Errorf("storage owner for %q is invalid", storage.Target)
-			}
+		if err := s.validateApp(app, request.CPU, request.MemoryMB); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (s *Service) validateApp(app workerapi.AppSpec, maxCPU float64, maxMemoryMB int) error {
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`).MatchString(app.ID) {
+		return fmt.Errorf("invalid app id %q", app.ID)
+	}
+	if !pinnedImageReference(app.Image) {
+		return fmt.Errorf("app %s image is not pinned", app.ID)
+	}
+	if app.InternalPort < 1024 || app.InternalPort > 65535 {
+		return fmt.Errorf("app %s has an invalid internal port", app.ID)
+	}
+	if app.CPU <= 0 || app.CPU > maxCPU || app.MemoryMB < 64 || app.MemoryMB > maxMemoryMB {
+		return fmt.Errorf("app %s resource limits are invalid", app.ID)
+	}
+	if app.ShmSizeMB < 0 || app.ShmSizeMB > 2048 || app.ShmSizeMB > app.MemoryMB {
+		return fmt.Errorf("app %s shared memory limit is invalid", app.ID)
+	}
+	allowedEnvironment := map[string]bool{
+		"PUID": true, "PGID": true, "TZ": true, "HARDEN_DESKTOP": true,
+		"DISABLE_OPEN_TOOLS": true, "DISABLE_SUDO": true,
+		"DISABLE_TERMINALS": true, "CHROME_CLI": true,
+	}
+	for key, value := range app.Environment {
+		if !allowedEnvironment[key] || len(value) > 512 ||
+			strings.ContainsAny(value, "\r\n\x00") {
+			return fmt.Errorf("app %s environment is invalid", app.ID)
+		}
+	}
+	for _, capability := range app.Capabilities {
+		if capability != "NET_RAW" {
+			return fmt.Errorf("app capability %q is not approved", capability)
+		}
+	}
+	if app.HealthPath != "" && (!strings.HasPrefix(app.HealthPath, "/") || strings.Contains(app.HealthPath, "..")) {
+		return fmt.Errorf("app %s health path is invalid", app.ID)
+	}
+	for _, storage := range app.Storage {
+		if storage.Type != "workspace" && storage.Type != "app-data" &&
+			storage.Type != "shell-home" && storage.Type != "temporary" {
+			return fmt.Errorf("storage type %q is not approved", storage.Type)
+		}
+		if !filepath.IsAbs(storage.Target) || strings.Contains(filepath.Clean(storage.Target), "..") {
+			return fmt.Errorf("storage target %q is invalid", storage.Target)
+		}
+		if storage.OwnerUID < 0 || storage.OwnerUID > 65535 ||
+			storage.OwnerGID < 0 || storage.OwnerGID > 65535 ||
+			(storage.OwnerUID == 0) != (storage.OwnerGID == 0) {
+			return fmt.Errorf("storage owner for %q is invalid", storage.Target)
+		}
+	}
+	return nil
+}
+
+func pinnedImageReference(value string) bool {
+	if value == "" || strings.ContainsAny(value, " \t\r\n\x00") {
+		return false
+	}
+	if marker := strings.LastIndex(value, "@sha256:"); marker >= 0 {
+		hash := value[marker+len("@sha256:"):]
+		return marker > 0 && regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(hash)
+	}
+	lastSlash := strings.LastIndex(value, "/")
+	lastColon := strings.LastIndex(value, ":")
+	return lastColon > lastSlash && lastColon < len(value)-1 &&
+		value[lastColon+1:] != "latest"
 }
 
 func (s *Service) provisionResources(ctx context.Context, request workerapi.ProvisionRequest) error {

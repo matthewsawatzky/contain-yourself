@@ -60,6 +60,7 @@ case "${1:-help}" in
     docker info >/dev/null 2>&1 || die "Docker is not running or is inaccessible"
     docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is unavailable"
     [ -d "${DATA_DIRECTORY:?}" ] || die "data directory is missing: $DATA_DIRECTORY"
+    [ -d "${DATA_DIRECTORY:?}/apps" ] || die "installed app directory is missing"
     [ -d "${CONFIG_DIRECTORY:?}/apps" ] || die "app configuration is missing"
     [ -d "${CONFIG_DIRECTORY:?}/templates" ] || die "template configuration is missing"
     dc config --quiet

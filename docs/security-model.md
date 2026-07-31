@@ -15,7 +15,9 @@
 - Controller has no Docker socket, runs as the configured non-root host
   UID/GID (the image default is 10001), and uses `no-new-privileges`.
 - Worker publishes no host port and offers no exec or generic create API.
-- Images require two approvals: a valid manifest and the worker allowlist.
+- Images require two approvals: a valid manifest plus either the static core
+  allowlist or a persistent worker record scoped to the complete store app
+  specification.
 - Host mounts, privileged containers, host namespaces, arbitrary devices and
   arbitrary capabilities are absent from the protocol.
 - VPN apps share only the Gluetun namespace, giving them no fallback host route.
@@ -40,6 +42,12 @@ management network. Docker's Unix socket is not a security sandbox.
 Third-party app images execute code and should be mirrored, scanned and pinned
 by digest for production. Version tags are immutable by policy, not by Docker.
 The included tags are examples that require deployment-specific validation.
+
+The configured HTTPS app-store origin is a trust root. SHA-256 verification
+detects mismatched or partial downloads but cannot protect against a malicious
+catalogue maintainer or compromised catalogue account. Keep the default store
+maintainer-reviewed; add signed index releases before trusting open
+third-party publishing.
 
 The management network is not marked `internal` because the worker must pull
 images and the controller may perform management checks. It must not be

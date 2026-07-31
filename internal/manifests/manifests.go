@@ -3,6 +3,8 @@ package manifests
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -83,6 +85,7 @@ type Desktop struct {
 type Entry struct {
 	Manifest Manifest `json:"manifest"`
 	Path     string   `json:"path"`
+	SHA256   string   `json:"sha256,omitempty"`
 	Error    string   `json:"error,omitempty"`
 }
 
@@ -123,6 +126,8 @@ func Scan(directory string) (*Registry, error) {
 		if err := Validate(entry.Manifest, filepath.Dir(path)); err != nil {
 			entry.Error = err.Error()
 		}
+		sum := sha256.Sum256(data)
+		entry.SHA256 = hex.EncodeToString(sum[:])
 		key := entry.Manifest.ID
 		if key == "" {
 			key = item.Name()
@@ -133,6 +138,46 @@ func Scan(directory string) (*Registry, error) {
 		registry.entries[key] = entry
 	}
 	return registry, nil
+}
+
+// Load validates one app.yaml and returns its manifest plus source digest.
+func Load(path string) (Entry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Entry{}, err
+	}
+	entry := Entry{Path: path}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&entry.Manifest); err != nil {
+		return Entry{}, err
+	}
+	if err := Validate(entry.Manifest, filepath.Dir(path)); err != nil {
+		return Entry{}, err
+	}
+	sum := sha256.Sum256(data)
+	entry.SHA256 = hex.EncodeToString(sum[:])
+	return entry, nil
+}
+
+// ScanDirectories combines a read-only core registry and a writable installed
+// registry. Duplicate IDs are rejected so installed packages cannot override
+// core applications through directory ordering.
+func ScanDirectories(directories ...string) (*Registry, error) {
+	combined := &Registry{entries: make(map[string]Entry)}
+	for _, directory := range directories {
+		registry, err := Scan(directory)
+		if err != nil {
+			return nil, err
+		}
+		for key, entry := range registry.entries {
+			if _, exists := combined.entries[key]; exists {
+				return nil, fmt.Errorf("duplicate app id %q across app directories", key)
+			}
+			combined.entries[key] = entry
+		}
+	}
+	return combined, nil
 }
 
 func Validate(m Manifest, packageDirectory string) error {
@@ -151,14 +196,14 @@ func Validate(m Manifest, packageDirectory string) error {
 			return errors.New("controller-ui apps cannot declare container runtime fields")
 		}
 	case "container-service":
-		if m.Runtime.Image == "" || strings.HasSuffix(m.Runtime.Image, ":latest") || !strings.Contains(m.Runtime.Image, ":") {
+		if !pinnedImage(m.Runtime.Image) {
 			return errors.New("container-service image must use an explicit non-latest tag")
 		}
 		if m.Runtime.InternalPort < 1024 || m.Runtime.InternalPort > 65535 {
 			return errors.New("internal_port must be between 1024 and 65535")
 		}
 	case "workspace-image":
-		if m.Runtime.Image == "" || strings.HasSuffix(m.Runtime.Image, ":latest") {
+		if !pinnedImage(m.Runtime.Image) {
 			return errors.New("workspace-image requires a pinned image")
 		}
 	default:
@@ -233,9 +278,30 @@ func Validate(m Manifest, packageDirectory string) error {
 	return nil
 }
 
+func pinnedImage(value string) bool {
+	if value == "" || strings.ContainsAny(value, " \t\r\n\x00") {
+		return false
+	}
+	if marker := strings.LastIndex(value, "@sha256:"); marker >= 0 {
+		hash := value[marker+len("@sha256:"):]
+		return marker > 0 && regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(hash)
+	}
+	lastSlash := strings.LastIndex(value, "/")
+	lastColon := strings.LastIndex(value, ":")
+	if lastColon <= lastSlash || lastColon == len(value)-1 {
+		return false
+	}
+	return value[lastColon+1:] != "latest"
+}
+
 func (r *Registry) Get(id string) (Manifest, bool) {
 	entry, ok := r.entries[id]
 	return entry.Manifest, ok && entry.Error == ""
+}
+
+func (r *Registry) Entry(id string) (Entry, bool) {
+	entry, ok := r.entries[id]
+	return entry, ok && entry.Error == ""
 }
 
 func (r *Registry) Entries() []Entry {

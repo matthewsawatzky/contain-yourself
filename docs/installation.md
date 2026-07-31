@@ -38,6 +38,8 @@ workstation-manager/
 ├── config -> current/config
 ├── data/
 │   ├── controller.db
+│   ├── apps/
+│   ├── app-store/
 │   ├── vpn-profiles.key
 │   ├── vpn-profiles/
 │   └── backups/
@@ -51,10 +53,15 @@ workstation-manager/
             └── templates/
 ```
 
-`data/` is never replaced by installation or upgrade. `config/` points to the
-reviewed catalogue shipped with the current release. To maintain a custom
-catalogue, copy it elsewhere and set `CONFIG_DIRECTORY` in `.env` to that
-directory; upgrades preserve this setting.
+`data/` is never replaced by installation or upgrade. Store-installed app
+packages and their rollback versions live there. `config/` points to the
+read-only core Desktop and Terminal definitions shipped with the current
+release. To maintain custom core configuration, copy it elsewhere and set
+`CONFIG_DIRECTORY` in `.env`; upgrades preserve this setting.
+
+Upgrading from a release before the app store preserves Browser, Code, and
+Files definitions from the previous `config/apps` under `data/apps`, so
+existing workstations remain usable.
 
 The installer also creates `wm` and `workstation-manager` links under
 `~/.local/bin`. If that directory is not on `PATH`, invoke the full
@@ -79,7 +86,8 @@ recreates the services. Previous release folders remain available for
 inspection and a future rollback command.
 
 Edit `.env` to change the bind address, external base domain, secure-cookie
-mode, session lifetime, Docker socket source, data path, or config path.
+mode, session lifetime, Docker socket source, data/config paths, or trusted
+`APP_STORE_INDEX_URL`.
 
 ## Development startup
 

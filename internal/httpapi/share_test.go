@@ -50,10 +50,14 @@ func TestShareRedemptionPermissionLimitAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Controller{
-		AppsDirectory:      filepath.Join("..", "..", "apps"),
-		TemplatesDirectory: filepath.Join("..", "..", "templates"),
-		WorkerToken:        "abcdefghijklmnopqrstuvwxyz012345",
-		SessionLifetime:    time.Hour,
+		AppsDirectory:          filepath.Join("..", "..", "core_apps"),
+		InstalledAppsDirectory: filepath.Join(t.TempDir(), "apps"),
+		AppStoreDirectory:      filepath.Join(t.TempDir(), "app-store"),
+		AppStoreIndexURL:       "http://127.0.0.1/store/index.json",
+		ControllerVersion:      "0.1.1",
+		TemplatesDirectory:     filepath.Join("..", "..", "core_templates"),
+		WorkerToken:            "abcdefghijklmnopqrstuvwxyz012345",
+		SessionLifetime:        time.Hour,
 	}
 	server, err := New(cfg, db, workerclient.New("http://127.0.0.1:1", cfg.WorkerToken), slog.Default())
 	if err != nil {

@@ -1,16 +1,19 @@
 # App-store roadmap
 
-## Product features
+## Implemented foundation
 
-The first controller UI should provide search, categories, installed/update
-states, platform compatibility, screenshots, upstream links, and a clear
-permission panel. Install and update are administrator actions; ordinary users
-may request apps or use apps approved for their account or the whole user base.
+The controller displays categories, installed/update states, platform
+compatibility, image and permission details. Synchronize, install, update and
+rollback are administrator actions. Downloads are bounded and verified,
+activation is atomic, prior versions are retained, and the worker persists an
+approval for the exact app specification.
 
-Updates should show a permission diff before approval, keep the previous
-package for rollback, and never change a running workstation until its owner
-chooses Update. The catalogue synchronizer needs bounded downloads, HTTPS,
-conditional requests, last-known-good caching, and an explicit refresh status.
+## Next product features
+
+Updates should show a field-by-field permission diff before approval and never
+change a running workstation until its owner chooses Update. Add search,
+screenshots, upstream detail views, per-user/request-only availability, signed
+catalogue releases and an explicit app uninstall flow.
 
 Useful later additions:
 

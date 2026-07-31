@@ -1,0 +1,12 @@
+schema_version: 1
+id: private
+name: Private workstation
+description: Persistent desktop and terminal forced through a selected WireGuard profile
+workspace_image: alpine:3.21
+apps: [web-desktop, terminal]
+vpn_required: true
+persistent: true
+cpu: 2
+memory_mb: 4096
+pid_limit: 512
+expires_hours: 0

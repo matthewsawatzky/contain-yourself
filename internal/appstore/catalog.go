@@ -107,6 +107,7 @@ type PermissionBrief struct {
 var (
 	identifier = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
 	version    = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+	digest     = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
 // Build validates every package below root/apps. When update is true it also
@@ -217,6 +218,13 @@ func loadBundle(path string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read bundle.json: %w", err)
 	}
+	return DecodeBundle(data)
+}
+
+func DecodeBundle(data []byte) (Bundle, error) {
+	if len(data) > maxBundleBytes {
+		return Bundle{}, fmt.Errorf("bundle.json exceeds %d bytes", maxBundleBytes)
+	}
 	var bundle Bundle
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -227,6 +235,47 @@ func loadBundle(path string) (Bundle, error) {
 		return Bundle{}, err
 	}
 	return bundle, nil
+}
+
+func DecodeIndex(data []byte) (Index, error) {
+	if len(data) > 1024*1024 {
+		return Index{}, errors.New("index.json exceeds 1048576 bytes")
+	}
+	var index Index
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&index); err != nil {
+		return Index{}, fmt.Errorf("decode index.json: %w", err)
+	}
+	if err := ensureJSONEnd(decoder); err != nil {
+		return Index{}, err
+	}
+	if index.SchemaVersion != SchemaVersion {
+		return Index{}, fmt.Errorf("index schema_version must be %d", SchemaVersion)
+	}
+	if len(index.Apps) > 1000 {
+		return Index{}, errors.New("index contains more than 1000 apps")
+	}
+	seen := make(map[string]bool)
+	for _, app := range index.Apps {
+		if !identifier.MatchString(app.ID) || seen[app.ID] {
+			return Index{}, fmt.Errorf("invalid or duplicate app id %q", app.ID)
+		}
+		seen[app.ID] = true
+		if strings.TrimSpace(app.Name) == "" || !version.MatchString(app.Version) ||
+			len(strings.TrimSpace(app.Summary)) < 8 {
+			return Index{}, fmt.Errorf("app %q has invalid display metadata", app.ID)
+		}
+		if app.Bundle.Path != filepath.ToSlash(filepath.Join("apps", app.ID, "bundle.json")) ||
+			!digest.MatchString(app.Bundle.SHA256) || app.Bundle.SizeBytes < 2 ||
+			app.Bundle.SizeBytes > maxBundleBytes {
+			return Index{}, fmt.Errorf("app %q has invalid bundle metadata", app.ID)
+		}
+		if app.Icon != filepath.ToSlash(filepath.Join("apps", app.ID, filepath.Base(app.Icon))) {
+			return Index{}, fmt.Errorf("app %q has an unsafe icon path", app.ID)
+		}
+	}
+	return index, nil
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

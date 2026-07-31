@@ -51,17 +51,22 @@ database and an upgrade fixture. Never edit a released migration.
 
 ## Adding an app
 
-1. Add `apps/<id>/app.yaml` and local icon.
+1. Add `app_store/apps/<id>/app.yaml`, `bundle.json`, README, and local icon.
 2. Pin a version tag or digest.
-3. Add the exact image to `WORKER_ALLOWED_IMAGES`.
-4. Add it to one or more templates.
-5. Add manifest rejection and Docker integration tests.
-6. Verify base-path behavior, WebSockets, health, shared workspace and VPN
+3. Run `make store` to generate hashes and the compact index.
+4. Add manifest rejection and Docker integration tests.
+5. Verify base-path behavior, WebSockets, health, shared workspace and VPN
    egress before enabling it.
+6. Run `make store-check` and follow the contribution checklist.
+
+Only Desktop and Terminal belong in `core_apps/`. Store installation creates a
+persistent worker approval for the complete validated app specification;
+community images do not need to be added to the static core allowlist.
 
 ## Adding a template
 
-Add `templates/<id>.yaml`. Only select valid registered apps. Resource defaults
+Add core presets to `core_templates/<id>.yaml`. Optional examples may live in
+`example_templates/`. Only select valid registered apps. Resource defaults
 must fit the host and every app's individual limits must fit the workstation.
 
 ## Test tiers
@@ -77,7 +82,8 @@ must always clean up their exact IDs.
 ## Source and deployment layout
 
 - `cmd/`, `internal/`, `pkg/`, `web/`, `migrations/`: Go application source.
-- `apps/`, `templates/`: reviewed default catalogue shipped in releases.
+- `core_apps/`, `core_templates/`: minimal definitions shipped in releases.
+- `app_store/`: optional packages, schemas, contribution docs and index.
 - `build/`: development and release image definitions.
 - `deploy/`: production Compose file using versioned GHCR images.
 - `scripts/`: development build/startup, installer, management, backup, and

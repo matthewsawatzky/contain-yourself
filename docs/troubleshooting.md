@@ -28,9 +28,11 @@ check by attaching them to another network.
 
 ## Image pull rejected
 
-The image must match both `apps/<id>/app.yaml` and
-`WORKER_ALLOWED_IMAGES` exactly. Tags are part of the value. An allowlist error
-is different from a registry authentication or unavailable-tag error.
+Core images must match both `core_apps/<id>/app.yaml` and
+`WORKER_ALLOWED_IMAGES` exactly. Store images require a successful installation
+that persists an approval for the exact app specification. Synchronize the
+catalogue and reinstall the app if that approval is missing. An approval error
+is different from registry authentication or an unavailable image tag.
 
 ## App health timeout
 

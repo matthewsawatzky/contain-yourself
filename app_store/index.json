@@ -13,7 +13,7 @@
       "icon": "apps/browser/icon.svg",
       "image": "lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1",
       "compatibility": {
-        "minimum_controller_version": "0.1.1",
+        "minimum_controller_version": "0.2.0",
         "platforms": [
           "linux/amd64",
           "linux/arm64"
@@ -29,7 +29,7 @@
       },
       "bundle": {
         "path": "apps/browser/bundle.json",
-        "sha256": "bf6d84e8ca7eab783f7ebddc7badb04b86d8530940ab86d88d45d1866ecdd524",
+        "sha256": "58e050b1c3ff7d73aafbaf6a64663e0ec64265503e1855ec273428a810842fac",
         "size_bytes": 1636
       }
     },
@@ -45,7 +45,7 @@
       "icon": "apps/code/icon.svg",
       "image": "codercom/code-server:4.99.4",
       "compatibility": {
-        "minimum_controller_version": "0.1.1",
+        "minimum_controller_version": "0.2.0",
         "platforms": [
           "linux/amd64",
           "linux/arm64"
@@ -61,7 +61,7 @@
       },
       "bundle": {
         "path": "apps/code/bundle.json",
-        "sha256": "fd79b6fe2c2d86890e98678028981731acea6bdfa01d3fc1ddeea80c2ae2e2fb",
+        "sha256": "7309902fda4bb07af4a4a6a65491c024d2c9e8942b036c13ae161b778292cac8",
         "size_bytes": 1611
       }
     },
@@ -77,7 +77,7 @@
       "icon": "apps/files/icon.svg",
       "image": "filebrowser/filebrowser:v2.32.0",
       "compatibility": {
-        "minimum_controller_version": "0.1.1",
+        "minimum_controller_version": "0.2.0",
         "platforms": [
           "linux/amd64",
           "linux/arm64"
@@ -93,7 +93,7 @@
       },
       "bundle": {
         "path": "apps/files/bundle.json",
-        "sha256": "cd914f1d723bd31fb7b22f72a2bad8ddf229897aa888c0952d560379c03eea56",
+        "sha256": "b7ecb86a09391429ad0ab3f6d8d528a79eb86879e5bceff024fe7b7a3a74bb52",
         "size_bytes": 1592
       }
     }

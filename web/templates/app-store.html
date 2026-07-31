@@ -1,0 +1,63 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Optional applications</div>
+      <h1>App store</h1>
+      <p class="lead">Install reviewed app packages for every user of this controller. Images and permissions are verified again by the Docker worker.</p>
+    </div>
+    {{if .User.IsAdmin}}
+    <form method="post" action="/app-store/sync">
+      <button class="primary">Synchronize catalogue</button>
+    </form>
+    {{end}}
+  </section>
+  {{template "flash" .}}
+  {{if not .StoreStatus.SyncedAt.IsZero}}
+  <p class="fine store-sync">Last synchronized {{.StoreStatus.SyncedAt}} from {{.StoreStatus.IndexURL}}</p>
+  {{end}}
+  {{if .StoreApps}}
+  <section class="store-grid">
+    {{range .StoreApps}}
+    <article class="store-card">
+      <div class="store-title">
+        <span class="app-glyph">{{slice .Entry.ID 0 1}}</span>
+        <div><h2>{{.Entry.Name}}</h2><p class="muted">{{.Entry.Summary}}</p></div>
+        <span class="status">{{if .Installed}}installed {{.CurrentVersion}}{{else}}available {{.Entry.Version}}{{end}}</span>
+      </div>
+      <div class="store-tags">{{range .Entry.Categories}}<span>{{.}}</span>{{end}}</div>
+      <dl class="store-permissions">
+        <div><dt>Image</dt><dd><code>{{.Entry.Image}}</code></dd></div>
+        <div><dt>Network</dt><dd>{{.Entry.Permissions.Network}}</dd></div>
+        <div><dt>Storage</dt><dd>{{range .Entry.Permissions.Storage}}{{.}} {{end}}</dd></div>
+        <div><dt>Capabilities</dt><dd>{{if .Entry.Permissions.Capabilities}}{{range .Entry.Permissions.Capabilities}}{{.}} {{end}}{{else}}none{{end}}</dd></div>
+        <div><dt>Platforms</dt><dd>{{range .Entry.Compatibility.Platforms}}{{.}} {{end}}</dd></div>
+      </dl>
+      {{if not .Compatible}}<div class="alert error">{{.CompatibilityNote}}</div>{{end}}
+      {{if $.User.IsAdmin}}
+      <div class="store-actions">
+        {{if .Compatible}}
+          {{if .Installed}}
+            {{if .UpdateAvailable}}
+            <form method="post" action="/app-store/apps/{{.Entry.ID}}/install"><button class="primary">Update to {{.Entry.Version}}</button></form>
+            {{else}}
+            <button disabled>Installed</button>
+            {{end}}
+            {{if .PreviousVersion}}
+            <form method="post" action="/app-store/apps/{{.Entry.ID}}/rollback"><button>Roll back to {{.PreviousVersion}}</button></form>
+            {{end}}
+          {{else}}
+          <form method="post" action="/app-store/apps/{{.Entry.ID}}/install"><button class="primary">Install {{.Entry.Version}}</button></form>
+          {{end}}
+        {{end}}
+      </div>
+      {{end}}
+    </article>
+    {{end}}
+  </section>
+  {{else}}
+  <div class="empty"><div class="empty-icon">+</div><h2>No cached catalogue</h2><p>An administrator can synchronize the configured app store.</p></div>
+  {{end}}
+</main>
+{{template "foot" .}}

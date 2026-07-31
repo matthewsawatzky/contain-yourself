@@ -18,6 +18,7 @@ unknown fields, and accepts exactly one value.
 | `GET` | `/v1/workstations/{id}` | inspect one resource set |
 | `GET` | `/v1/workstations/{id}/usage` | bounded one-shot Docker stats |
 | `GET` | `/v1/workstations/{id}/apps/{app}/logs` | bounded recent logs |
+| `POST` | `/v1/apps/approve` | persist approval for one exact validated app specification |
 | `POST` | `/v1/workstations` | provision reviewed apps and storage |
 | `POST` | `/v1/workstations/{id}/rebuild` | pull and replace containers, retain volumes |
 | `POST` | `/v1/workstations/{id}/action` | start, stop, restart or delete |

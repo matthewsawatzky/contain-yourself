@@ -38,10 +38,24 @@ go run ./cmd/storectl check
 ```
 
 The initial optional catalogue contains Browser, Code, and Files. Desktop and
-Terminal remain core apps. VPN is a worker-managed system component rather
-than an installable app.
+Terminal remain in `core_apps/`. VPN is a worker-managed system component
+rather than an installable app.
 
-The existing top-level `apps/` directory remains the installed catalogue
-snapshot during the first migration phase. Store installation will later copy
-verified packages into the controller data directory; until then, keep matching
-runtime files in both locations in sync.
+The controller synchronizes the generated index, verifies `bundle.json` and
+every payload file, asks the worker to approve the exact app specification,
+then atomically activates the package under `/data/apps`.
+
+## Controller workflow
+
+1. An administrator opens **App store** and selects **Synchronize catalogue**.
+2. Every signed-in user may browse the cached catalogue and permission
+   summary; only administrators may install, update, or roll back.
+3. An installed app becomes globally available in the workstation creation
+   form. Installing it does not silently add it to existing workstations.
+4. An app update or rollback changes the active definition for future
+   provisioning. Owners explicitly select **Update** on an existing
+   workstation before its containers are rebuilt with that definition.
+
+The controller retains the last valid catalogue if refresh fails. It retains
+the prior installed package after an update, enabling one-click rollback. App
+uninstall and per-user app availability are later lifecycle features.

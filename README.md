@@ -35,9 +35,9 @@ creates the installation folders, pulls the controller and worker from GitHub
 Container Registry, and starts Compose.
 
 Open <http://127.0.0.1:8080> and create the initial administrator. The
-non-VPN `Terminal`, `Developer (direct internet)`, and
-`Browser (direct internet)` templates can be used immediately. For
-`Developer` and `Private browser`, open **VPN profiles** and paste a WireGuard
+Terminal and Private workstation templates can be used immediately. Install
+optional Browser, Code, and Files applications from **App store**. Before
+launching a Private workstation, open **VPN profiles** and paste a WireGuard
 configuration from your VPN provider. No VPN account credentials belong in
 `.env`.
 
@@ -98,7 +98,8 @@ front, then set `SECURE_COOKIES=true`.
 - optional Gluetun network namespace with kill switch and readiness gating
 - encrypted WireGuard profiles with global and per-user private catalogues
 - administrator-created user accounts and global profiles visible to new users
-- terminal, files, code and browser app definitions
+- core desktop and terminal definitions plus installable Browser, Code, and
+  Files packages
 - authenticated HTTP and WebSocket reverse proxy
 - expiring, use-limited workstation share links with revocation and scoped
   terminal/app/file/lifecycle permissions
@@ -153,7 +154,9 @@ controller-enforced file-size policy, finer grained read-only terminal/file
 sessions, and a controlled offline restore command. These are recorded
 explicitly rather than being hidden behind permissive fallback behavior.
 
-The app-store source catalogue and validation pipeline are present. The
-controller install/update UI and remote signed-catalogue synchronization are
-the next app-store phase. Until that is complete, the top-level `apps/`
-directory remains the installed snapshot used by releases.
+The controller app store supports bounded remote catalogue synchronization,
+per-file SHA-256 verification, strict manifest validation, persistent worker
+approvals scoped to the complete app specification, atomic activation,
+updates, and one-version rollback. The configured HTTPS catalogue is the trust
+root; signed catalogue releases are still planned before accepting
+third-party publishers without maintainer review.

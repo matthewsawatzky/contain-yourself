@@ -4,6 +4,8 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,11 +16,14 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"workstation-manager/internal/appstore"
 	"workstation-manager/internal/auth"
 	"workstation-manager/internal/config"
 	"workstation-manager/internal/database"
@@ -43,6 +48,7 @@ type Server struct {
 	registryMu sync.RWMutex
 	apps       *manifests.Registry
 	presets    *templatesregistry.Registry
+	store      *appstore.Manager
 
 	loginMu sync.Mutex
 	logins  map[string]*loginAttempt
@@ -73,6 +79,8 @@ type pageData struct {
 	Usage            []workerapi.ResourceUsage
 	VPNProfiles      []database.VPNProfile
 	Users            []database.User
+	StoreApps        []appstore.AppView
+	StoreStatus      appstore.SyncStatus
 }
 
 type contextKey int
@@ -97,6 +105,29 @@ func New(cfg config.Controller, db *database.DB, worker *workerclient.Client, lo
 		config: cfg, db: db, worker: worker, log: logger, templates: parsed,
 		logins: make(map[string]*loginAttempt),
 	}
+	coreRegistry, err := manifests.Scan(cfg.AppsDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("scan core apps: %w", err)
+	}
+	var reservedIDs []string
+	for _, entry := range coreRegistry.Entries() {
+		if entry.Error == "" {
+			reservedIDs = append(reservedIDs, entry.Manifest.ID)
+		}
+	}
+	store, err := appstore.NewManager(appstore.ManagerConfig{
+		RootDirectory:          cfg.AppStoreDirectory,
+		InstalledAppsDirectory: cfg.InstalledAppsDirectory,
+		IndexURL:               cfg.AppStoreIndexURL,
+		ControllerVersion:      cfg.ControllerVersion,
+		Approve:                server.approveStoreManifest,
+		ReservedIDs:            reservedIDs,
+		Platform:               runtime.GOOS + "/" + runtime.GOARCH,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize app store: %w", err)
+	}
+	server.store = store
 	if err := server.rescan(); err != nil {
 		return nil, err
 	}
@@ -122,6 +153,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /vpn-profiles", s.requireUser(http.HandlerFunc(s.vpnProfilesPage)))
 	mux.Handle("POST /vpn-profiles", s.requireUser(http.HandlerFunc(s.createVPNProfile)))
 	mux.Handle("POST /vpn-profiles/{id}/enabled", s.requireUser(http.HandlerFunc(s.setVPNProfileEnabled)))
+	mux.Handle("GET /app-store", s.requireUser(http.HandlerFunc(s.appStorePage)))
+	mux.Handle("POST /app-store/sync", s.requireAdmin(http.HandlerFunc(s.appStoreSync)))
+	mux.Handle("POST /app-store/apps/{id}/install", s.requireAdmin(http.HandlerFunc(s.appStoreInstall)))
+	mux.Handle("POST /app-store/apps/{id}/rollback", s.requireAdmin(http.HandlerFunc(s.appStoreRollback)))
 	mux.Handle("GET /workstations/{id}", s.requireUser(http.HandlerFunc(s.workstationPage)))
 	mux.Handle("GET /workstations/{id}/desktop", s.requireUser(http.HandlerFunc(s.desktopPage)))
 	mux.Handle("POST /workstations/{id}/actions/{action}", s.requireUser(http.HandlerFunc(s.workstationAction)))
@@ -146,6 +181,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/workstations/{id}/shares", s.requireUser(http.HandlerFunc(s.apiCreateShare)))
 	mux.Handle("POST /api/v1/workstations/{id}/shares/{share}/revoke", s.requireUser(http.HandlerFunc(s.apiRevokeShare)))
 	mux.Handle("GET /api/v1/apps", s.requireUser(http.HandlerFunc(s.apiApps)))
+	mux.Handle("GET /api/v1/app-store", s.requireUser(http.HandlerFunc(s.apiAppStore)))
 	mux.Handle("GET /api/v1/templates", s.requireUser(http.HandlerFunc(s.apiTemplates)))
 	mux.Handle("GET /api/v1/vpn-profiles", s.requireUser(http.HandlerFunc(s.apiVPNProfiles)))
 	mux.Handle("POST /api/v1/vpn-profiles", s.requireUser(http.HandlerFunc(s.apiCreateVPNProfile)))
@@ -153,6 +189,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/users", s.requireAdmin(http.HandlerFunc(s.apiUsers)))
 	mux.Handle("POST /api/v1/users", s.requireAdmin(http.HandlerFunc(s.apiCreateUser)))
 	mux.Handle("POST /api/v1/admin/rescan", s.requireAdmin(http.HandlerFunc(s.apiRescan)))
+	mux.Handle("POST /api/v1/admin/app-store/sync", s.requireAdmin(http.HandlerFunc(s.apiAppStoreSync)))
+	mux.Handle("POST /api/v1/admin/app-store/apps/{id}/install", s.requireAdmin(http.HandlerFunc(s.apiAppStoreInstall)))
+	mux.Handle("POST /api/v1/admin/app-store/apps/{id}/rollback", s.requireAdmin(http.HandlerFunc(s.apiAppStoreRollback)))
 	mux.Handle("POST /api/v1/admin/reconcile", s.requireAdmin(http.HandlerFunc(s.apiReconcile)))
 	mux.Handle("POST /api/v1/admin/backup", s.requireAdmin(http.HandlerFunc(s.apiBackup)))
 	return securityHeaders(requestLogger(s.log, mux))
@@ -338,6 +377,67 @@ func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
 	}
 	user := currentUser(r)
 	s.render(w, "users.html", pageData{Title: "Users", User: &user, Users: users})
+}
+
+func (s *Server) appStorePage(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	views, status, err := s.store.Views()
+	data := pageData{Title: "App store", User: &user, StoreApps: views, StoreStatus: status}
+	if status.Error != "" {
+		data.Error = "Last synchronization failed: " + status.Error
+	}
+	if err != nil {
+		data.Notice = "Synchronize the catalogue to browse optional apps."
+	}
+	s.render(w, "app-store.html", data)
+}
+
+func (s *Server) appStoreSync(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	if _, err := s.store.Sync(ctx); err != nil {
+		s.renderError(w, r, http.StatusBadGateway, err)
+		return
+	}
+	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
+}
+
+func (s *Server) appStoreInstall(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	if _, err := s.store.Install(ctx, r.PathValue("id")); err != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if err := s.rescan(); err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
+}
+
+func (s *Server) appStoreRollback(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if _, err := s.store.Rollback(ctx, r.PathValue("id")); err != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if err := s.rescan(); err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
+}
+
+func (s *Server) approveStoreManifest(ctx context.Context, manifest manifests.Manifest, manifestPath string) error {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(data)
+	_, err = s.worker.ApproveApp(ctx, manifestAppSpec(manifest, hex.EncodeToString(sum[:])))
+	return err
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -939,30 +1039,35 @@ func (s *Server) provisionRequest(ctx context.Context, ws database.Workstation) 
 	s.registryMu.RLock()
 	defer s.registryMu.RUnlock()
 	for _, dbApp := range ws.Apps {
-		app, ok := s.apps.Get(dbApp.AppID)
+		entry, ok := s.apps.Entry(dbApp.AppID)
 		if !ok {
 			return request, fmt.Errorf("app %q disappeared from registry", dbApp.AppID)
 		}
+		app := entry.Manifest
 		if app.Runtime.Type != "container-service" {
 			continue
 		}
-		spec := workerapi.AppSpec{
-			ID: app.ID, Image: app.Runtime.Image, Command: app.Runtime.Command,
-			Environment:  app.Runtime.Environment,
-			InternalPort: app.Runtime.InternalPort, MemoryMB: app.Resources.DefaultMemoryMB,
-			CPU: app.Resources.DefaultCPU, ShmSizeMB: app.Resources.ShmSizeMB,
-			Capabilities: app.Permissions.Capabilities,
-			HealthPath:   app.Health.Path, HealthTimeoutSeconds: app.Health.TimeoutSeconds,
-		}
-		for _, storage := range app.Storage {
-			spec.Storage = append(spec.Storage, workerapi.StorageSpec{
-				Type: storage.Type, Target: storage.Target,
-				OwnerUID: storage.OwnerUID, OwnerGID: storage.OwnerGID,
-			})
-		}
-		request.Apps = append(request.Apps, spec)
+		request.Apps = append(request.Apps, manifestAppSpec(app, entry.SHA256))
 	}
 	return request, nil
+}
+
+func manifestAppSpec(app manifests.Manifest, manifestSHA256 string) workerapi.AppSpec {
+	spec := workerapi.AppSpec{
+		ID: app.ID, Version: app.Version, ManifestSHA256: manifestSHA256,
+		Image: app.Runtime.Image, Command: app.Runtime.Command,
+		Environment: app.Runtime.Environment, InternalPort: app.Runtime.InternalPort,
+		MemoryMB: app.Resources.DefaultMemoryMB, CPU: app.Resources.DefaultCPU,
+		ShmSizeMB: app.Resources.ShmSizeMB, Capabilities: app.Permissions.Capabilities,
+		HealthPath: app.Health.Path, HealthTimeoutSeconds: app.Health.TimeoutSeconds,
+	}
+	for _, storage := range app.Storage {
+		spec.Storage = append(spec.Storage, workerapi.StorageSpec{
+			Type: storage.Type, Target: storage.Target,
+			OwnerUID: storage.OwnerUID, OwnerGID: storage.OwnerGID,
+		})
+	}
+	return spec
 }
 
 func (s *Server) beginAction(ctx context.Context, user database.User, id, action string) error {
@@ -1303,7 +1408,8 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 }
 
 func (s *Server) rescan() error {
-	appRegistry, err := manifests.Scan(s.config.AppsDirectory)
+	appRegistry, err := manifests.ScanDirectories(
+		s.config.AppsDirectory, s.config.InstalledAppsDirectory)
 	if err != nil {
 		return err
 	}

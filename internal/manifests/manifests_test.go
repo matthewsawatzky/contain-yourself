@@ -81,3 +81,46 @@ func TestScannerRejectsUnknownFields(t *testing.T) {
 		t.Fatal("unknown unsafe field was not reported")
 	}
 }
+
+func TestScanDirectoriesIncludesDigestAndRejectsOverrides(t *testing.T) {
+	core := t.TempDir()
+	installed := t.TempDir()
+	for _, root := range []string{core, installed} {
+		dir := filepath.Join(root, "terminal")
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		manifest := `schema_version: 1
+id: terminal
+name: Terminal
+version: 1.0.0
+runtime:
+  type: container-service
+  image: example/terminal:1.0.0
+  internal_port: 7681
+routing:
+  base_path: /apps/terminal/
+network:
+  mode: workstation-vpn
+resources:
+  default_memory_mb: 128
+  default_cpu: 0.25
+desktop:
+  visible: true
+`
+		if err := os.WriteFile(filepath.Join(dir, "app.yaml"), []byte(manifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry, err := ScanDirectories(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := registry.Entry("terminal")
+	if !ok || len(entry.SHA256) != 64 {
+		t.Fatalf("manifest digest missing: %#v", entry)
+	}
+	if _, err := ScanDirectories(core, installed); err == nil {
+		t.Fatal("installed app overrode a core id")
+	}
+}

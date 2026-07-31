@@ -36,12 +36,16 @@ func TestPrivateProfileIsEncryptedAndOwnerScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Controller{
-		AppsDirectory:        filepath.Join("..", "..", "apps"),
-		TemplatesDirectory:   filepath.Join("..", "..", "templates"),
-		VPNProfilesDirectory: filepath.Join(root, "vpn-profiles"),
-		VPNEncryptionKeyFile: filepath.Join(root, "vpn-profiles.key"),
-		WorkerToken:          "abcdefghijklmnopqrstuvwxyz012345",
-		SessionLifetime:      time.Hour,
+		AppsDirectory:          filepath.Join("..", "..", "core_apps"),
+		InstalledAppsDirectory: filepath.Join(root, "apps"),
+		AppStoreDirectory:      filepath.Join(root, "app-store"),
+		AppStoreIndexURL:       "http://127.0.0.1/store/index.json",
+		ControllerVersion:      "0.1.1",
+		TemplatesDirectory:     filepath.Join("..", "..", "core_templates"),
+		VPNProfilesDirectory:   filepath.Join(root, "vpn-profiles"),
+		VPNEncryptionKeyFile:   filepath.Join(root, "vpn-profiles.key"),
+		WorkerToken:            "abcdefghijklmnopqrstuvwxyz012345",
+		SessionLifetime:        time.Hour,
 	}
 	server, err := New(cfg, db,
 		workerclient.New("http://127.0.0.1:1", cfg.WorkerToken), slog.Default())

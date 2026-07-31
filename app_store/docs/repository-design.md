@@ -10,7 +10,7 @@ be separated from core code. A separate store repository also avoids mixing
 controller releases with frequent app updates. Keep the schema version and
 minimum controller version fields when splitting it.
 
-The controller installation design is:
+The controller installation flow is:
 
 1. Fetch a bounded `index.json` over HTTPS with conditional requests and retain
    the last known good copy.
@@ -22,14 +22,14 @@ The controller installation design is:
    only if it is already in the host allowlist or the app approval carries a
    store signature the worker can verify. A controller-provided image string
    alone never expands the worker allowlist.
-6. Copy the package atomically into
-   `/data/apps/<id>/<version>`, then rescan the registry.
+6. Archive the version under `/data/app-store/versions/<id>/<version>`,
+   atomically activate it at `/data/apps/<id>`, then rescan the registry.
 7. Pin the installed version and keep the previous version for rollback.
 
-Published catalogues should use immutable release assets or a signed index.
-Installing directly from an unpinned mutable branch is unsuitable for the
-trusted default store.
+The first implementation trusts the configured HTTPS catalogue origin and
+verifies all content against its index. Published third-party catalogues should
+add a signed index before they are accepted without maintainer review.
 
-Local administrators will also be able to provide packages in `/config/apps`.
-Core IDs cannot be overridden, and duplicate IDs across local and store
-sources must fail visibly rather than being resolved by filesystem order.
+Core packages live in read-only `/config/apps`; store-installed packages live
+in `/data/apps`. Core IDs cannot be overridden, and duplicate IDs across
+sources fail rather than being resolved by filesystem order.

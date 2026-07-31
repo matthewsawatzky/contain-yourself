@@ -1,11 +1,11 @@
 # App manifest
 
-Each app lives in `apps/<id>/app.yaml`. The scanner uses strict YAML decoding:
+Core apps live in `core_apps/<id>/app.yaml`; store apps live in
+`app_store/apps/<id>/app.yaml`. The scanner uses strict YAML decoding:
 unknown fields are errors rather than ignored options. A malformed package
 remains visible as a validation error and cannot be selected by a template.
 
-Optional catalogue apps use the identical runtime manifest inside
-`app_store/apps/<id>/`. Their adjacent `bundle.json` contains store copy,
+An optional app's adjacent `bundle.json` contains store copy,
 attribution, compatibility and integrity metadata; it does not duplicate
 runtime permissions. See [the app-store format](../app_store/docs/bundle-format.md).
 
@@ -72,8 +72,12 @@ worker to run a short, fixed `chown` initializer using that already-approved
 image. The initializer has no network, is deleted immediately, and is not
 available through an execution API.
 
-An image must also appear in `WORKER_ALLOWED_IMAGES`. Manifest validation and
-worker validation are intentionally duplicated across the trust boundary.
+Core images may appear in `WORKER_ALLOWED_IMAGES`. Store installation sends
+the worker the complete validated app specification; its persistent approval
+is scoped to the app ID, version, manifest hash, image and every runtime field.
+Changing a command, mount, environment value, resource limit or image
+invalidates the approval. Manifest validation and worker validation remain
+duplicated across the trust boundary.
 
 After changing packages, call:
 

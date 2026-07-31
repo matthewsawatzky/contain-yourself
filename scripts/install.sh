@@ -145,6 +145,7 @@ if [ "$requested_version" != latest ] && [ "$requested_version" != "$release_ver
 fi
 
 mkdir -p "$install_dir/releases" "$install_dir/data"
+mkdir -p "$install_dir/data/apps"
 release_dir="$install_dir/releases/$release_version"
 if [ ! -d "$release_dir" ]; then
   incoming="$install_dir/releases/.incoming-$release_version-$$"
@@ -154,6 +155,21 @@ if [ ! -d "$release_dir" ]; then
 fi
 cp "$payload/manage" "$install_dir/manage"
 chmod 755 "$install_dir/manage"
+
+# Releases before the app store shipped optional apps as controller
+# configuration. Preserve those packages as installed apps during upgrade.
+if [ -d "$install_dir/current/config/apps" ]; then
+  for old_app in "$install_dir/current/config/apps"/*; do
+    [ -d "$old_app" ] || continue
+    old_id=$(basename "$old_app")
+    case "$old_id" in
+      terminal|web-desktop) continue ;;
+    esac
+    if [ ! -e "$install_dir/data/apps/$old_id" ]; then
+      cp -R "$old_app" "$install_dir/data/apps/$old_id"
+    fi
+  done
+fi
 
 if [ -e "$install_dir/current" ] && [ ! -L "$install_dir/current" ]; then
   die "$install_dir/current exists and is not a managed symlink"
@@ -217,6 +233,7 @@ ensure_env PUBLIC_BASE_DOMAIN ""
 ensure_env SECURE_COOKIES "false"
 ensure_env SESSION_LIFETIME "24h"
 ensure_env DOCKER_SOCKET "$docker_socket"
+ensure_env APP_STORE_INDEX_URL "https://raw.githubusercontent.com/$repository/main/app_store/index.json"
 
 host_uid=$(id -u)
 host_gid=$(id -g)
