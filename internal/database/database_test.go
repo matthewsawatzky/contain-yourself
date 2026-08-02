@@ -168,11 +168,11 @@ func TestVPNProfilesCombineGlobalAndPrivateCatalogues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	alice, err := db.CreateUser(ctx, "alice", "hash", false)
+	alice, err := db.CreateUser(ctx, "alice", "hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := db.CreateUser(ctx, "bob", "hash", false)
+	bob, err := db.CreateUser(ctx, "bob", "hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}

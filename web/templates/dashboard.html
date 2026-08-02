@@ -2,8 +2,7 @@
 {{template "nav" .}}
 <main class="page">
   <section class="hero">
-    <div><div class="eyebrow">Workspace control</div><h1>Workstations</h1><p class="lead">Launch a preset, then add any installed apps you need.</p></div>
-    <div class="health-chip"><i></i> Controller online</div>
+    <div><h1>Workstations</h1><p class="lead">Launch a preset, then add any installed apps you need.</p></div>
   </section>
   {{template "flash" .}}
   <div class="dashboard-grid">
@@ -15,7 +14,10 @@
           <div class="card-top"><span class="machine-icon">⌁</span><span class="status status-{{.State}}">{{.State}}</span></div>
           <h2>{{.Name}}</h2>
           <code>{{.Hostname}}</code>
-          <div class="metrics"><span>{{.CPULimit}} CPU</span><span>{{.MemoryLimitMB}} MB</span>{{if .VPNRequired}}<span>VPN required</span>{{end}}</div>
+          <div class="card-foot">
+            <span>{{.CPULimit}} CPU · {{.MemoryLimitMB}} MB</span>
+            <span>{{if .VPNRequired}}VPN{{else}}Direct{{end}}</span>
+          </div>
         </a>
         {{end}}
       </div>

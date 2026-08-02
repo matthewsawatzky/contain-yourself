@@ -191,6 +191,15 @@ func (s *Server) create(ctx context.Context, user database.User, input createInp
 	if len(dbApps) == 0 {
 		return database.Workstation{}, errors.New("at least one app is required")
 	}
+	// Enforce the user's egress grants here, at the single point every creation
+	// path funnels through, rather than by hiding templates in the UI. The JSON
+	// API and the form both land here.
+	mode := egress.Resolve(preset.Egress, preset.VPNRequired)
+	if !egress.Granted(egress.ParseGrants(user.AllowedEgress), mode, user.IsAdmin) {
+		return database.Workstation{}, fmt.Errorf(
+			"your account is not permitted to use the %q connection type; ask an administrator",
+			mode.Label())
+	}
 	var vpnProfileID *int64
 	if preset.VPNRequired {
 		if input.VPNProfileID == nil || *input.VPNProfileID <= 0 {
@@ -212,7 +221,7 @@ func (s *Server) create(ctx context.Context, user database.User, input createInp
 		Hostname: id, CPULimit: preset.CPU, MemoryLimitMB: preset.MemoryMB,
 		PIDLimit: preset.PIDLimit, Persistent: preset.Persistent, VPNRequired: preset.VPNRequired,
 		VPNProfileID: vpnProfileID,
-		EgressMode:   string(egress.Resolve(preset.Egress, preset.VPNRequired)),
+		EgressMode:   string(mode),
 	}
 	if err := s.db.CreateWorkstation(ctx, ws, dbApps); err != nil {
 		return database.Workstation{}, err
@@ -268,13 +277,13 @@ func (s *Server) provision(id string, user database.User) {
 }
 
 func (s *Server) provisionRequest(ctx context.Context, ws database.Workstation) (workerapi.ProvisionRequest, error) {
-	mode := egress.Resolve(ws.EgressMode, ws.VPNRequired)
+	provisionMode := egress.Resolve(ws.EgressMode, ws.VPNRequired)
 	request := workerapi.ProvisionRequest{
 		WorkstationID: ws.ID, Persistent: ws.Persistent, VPNRequired: ws.VPNRequired,
 		MemoryMB: ws.MemoryLimitMB, CPU: ws.CPULimit, PIDLimit: ws.PIDLimit,
-		WorkspaceImage: ws.WorkspaceImage, EgressMode: string(mode),
+		WorkspaceImage: ws.WorkspaceImage, EgressMode: string(provisionMode),
 	}
-	if mode.RequiresVPNProfile() {
+	if provisionMode.RequiresVPNProfile() {
 		if ws.VPNProfileID == nil {
 			return request, errors.New("VPN workstation has no selected profile")
 		}

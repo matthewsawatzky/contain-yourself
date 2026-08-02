@@ -121,7 +121,9 @@ func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
-	s.render(w, "users.html", pageData{Title: "Users", User: &user, Users: users})
+	s.render(w, "users.html", pageData{
+		Title: "Users", User: &user, Users: users, EgressModes: grantableChoices(),
+	})
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -146,10 +148,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 type userInput struct {
-	Username        string `json:"username"`
-	Password        string `json:"password"`
-	ConfirmPassword string `json:"confirm_password"`
-	IsAdmin         bool   `json:"is_admin"`
+	Username        string   `json:"username"`
+	Password        string   `json:"password"`
+	ConfirmPassword string   `json:"confirm_password"`
+	IsAdmin         bool     `json:"is_admin"`
+	AllowedEgress   []string `json:"allowed_egress,omitempty"`
 }
 
 func (s *Server) storeUser(ctx context.Context, input userInput) (database.User, error) {
@@ -165,7 +168,43 @@ func (s *Server) storeUser(ctx context.Context, input userInput) (database.User,
 	if err != nil {
 		return database.User{}, err
 	}
-	return s.db.CreateUser(ctx, input.Username, hash, input.IsAdmin)
+	// An omitted grant set means "the usual", not "none": a caller that never
+	// heard of egress grants should still create a usable account.
+	grants := egress.DefaultGrants()
+	if input.AllowedEgress != nil {
+		grants, err = egress.ValidateGrants(input.AllowedEgress)
+		if err != nil {
+			return database.User{}, err
+		}
+	}
+	return s.db.CreateUser(ctx, input.Username, hash, input.IsAdmin,
+		egress.FormatGrants(grants))
+}
+
+func (s *Server) setUserEgress(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid form"))
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid user id"))
+		return
+	}
+	grants, err := egress.ValidateGrants(r.Form["allowed_egress"])
+	if err != nil {
+		s.renderError(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if err := s.db.SetUserEgress(r.Context(), id, egress.FormatGrants(grants)); err != nil {
+		s.renderError(w, r, http.StatusNotFound, errors.New("user not found"))
+		return
+	}
+	http.Redirect(w, r, "/users", http.StatusSeeOther)
 }
 
 func (s *Server) vpnProfilesPage(w http.ResponseWriter, r *http.Request) {

@@ -55,6 +55,25 @@ desktop:
 
 `controller-ui` apps cannot declare an image, command or port.
 
+## Health paths and prefixes
+
+`health.path` is the path the **app itself** serves. The worker's probe reaches
+the app through WSLAN directly and does not apply the controller proxy's prefix
+handling, so it does not match `routing.base_path` automatically.
+
+| `strip_prefix` | Where the app serves | `health.path` must be |
+| --- | --- | --- |
+| `true` | the root — the proxy removes the prefix | a root path, e.g. `/` or `/healthz` |
+| `false` | under `base_path` — the app is prefix-aware | inside `base_path`, e.g. `/apps/terminal/` |
+
+Validation rejects a `health.path` outside `base_path` when `strip_prefix` is
+false. Without that check the failure is slow and misleading: the app starts
+normally, every probe returns 404, and provisioning fails 90 seconds later with
+a timeout that reads as though the app never came up.
+
+An app that is prefix-aware usually has a launch flag that says so — ttyd's
+`--base-path`, for example. If you set one, the health path has to include it.
+
 ## Desktop roles
 
 `desktop.role` tells the controller what part an app plays in the workstation

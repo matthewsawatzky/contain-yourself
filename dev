@@ -1,0 +1,410 @@
+#!/bin/sh
+# Local development driver. Builds and runs everything from this checkout so a
+# change can be tested without cutting a GitHub release.
+#
+# Run ./dev help for the command list.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$root"
+
+# Defaults for ./dev deploy. These name locally built images; nothing under this
+# repository or tag is ever pushed anywhere.
+LOCAL_IMAGE_REPOSITORY=${LOCAL_IMAGE_REPOSITORY:-contain-yourself-local}
+LOCAL_IMAGE_TAG=${LOCAL_IMAGE_TAG:-dev}
+
+die() {
+  printf 'dev: %s\n' "$*" >&2
+  exit 1
+}
+
+note() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+
+require_docker() {
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  docker info >/dev/null 2>&1 || die "Docker is not running or is not reachable"
+  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is unavailable"
+}
+
+random_hex32() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+  fi
+}
+
+# ensure_env creates the repo-local .env on first use, matching what
+# scripts/dev-up.sh has always done.
+ensure_env() {
+  [ -f .env ] && return 0
+  note "creating .env from .env.example"
+  sed \
+    -e "s/change-this-development-token-0123456789abcdef/$(random_hex32)/" \
+    -e "s/^CONTROLLER_UID=.*/CONTROLLER_UID=$(id -u)/" \
+    -e "s/^CONTROLLER_GID=.*/CONTROLLER_GID=$(id -g)/" \
+    .env.example >.env
+  chmod 600 .env
+}
+
+# compose runs the repository's own compose file, which builds from source.
+compose() {
+  ensure_env
+  # Compose insists on the token being resolvable even for pure build commands.
+  WORKER_TOKEN=${WORKER_TOKEN:-build-only-token-not-used-at-runtime} \
+    docker compose "$@"
+}
+
+# ---------------------------------------------------------------- build ----
+
+# The Compose service names do not match what anyone would type: the worker is
+# "docker-worker" and the WSLAN image is built by a profile-gated service called
+# "wslan-image". resolve_service accepts the obvious name for each, and the real
+# one too, so both work.
+resolve_service() {
+  case "$1" in
+    controller) printf 'controller' ;;
+    worker|docker-worker) printf 'docker-worker' ;;
+    wslan|wslan-image) printf 'wslan-image' ;;
+    *) return 1 ;;
+  esac
+}
+
+# resolve_services expands its arguments into Compose service names. No
+# arguments, or "all", means every service.
+#
+# It reports failure by returning non-zero rather than exiting, because callers
+# run it inside a command substitution: exiting there would only end the
+# subshell and leave the caller running with an empty service list, which
+# Compose reads as "every service".
+resolve_services() {
+  if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then
+    printf 'controller docker-worker wslan-image'
+    return 0
+  fi
+  resolved=""
+  for name in "$@"; do
+    if service=$(resolve_service "$name"); then
+      resolved="$resolved $service"
+    else
+      printf 'dev: unknown service: %s (expected controller, worker, wslan, or all)\n' \
+        "$name" >&2
+      return 1
+    fi
+  done
+  printf '%s' "${resolved# }"
+}
+
+cmd_build() {
+  require_docker
+  services=$(resolve_services "$@") || exit 1
+  # shellcheck disable=SC2086  # deliberate word splitting of the service list
+  set -- $services
+  note "building: $*"
+  compose --profile system-image build "$@"
+  note "built"
+}
+
+# ----------------------------------------------------------------- stack ----
+
+cmd_stack() {
+  action=${1:-help}
+  [ "$#" -gt 0 ] && shift
+  case "$action" in
+    up)
+      require_docker
+      mkdir -p data/worker data/workstation-logs
+      cmd_build
+      note "starting stack"
+      compose up -d "$@"
+      compose ps
+      bind=$(sed -n 's/^CONTROLLER_BIND=//p' .env | tr -d '"' | head -1)
+      printf '\nController: http://%s:8080\n' "${bind:-127.0.0.1}"
+      ;;
+    down)
+      require_docker
+      compose down "$@"
+      ;;
+    restart)
+      require_docker
+      # wslan-image only ever builds an image, so it is not a restart target.
+      [ "$#" -eq 0 ] && set -- controller worker
+      services=$(resolve_services "$@") || exit 1
+      # shellcheck disable=SC2086  # deliberate word splitting of the service list
+      set -- $services
+      compose restart "$@"
+      ;;
+    logs)
+      require_docker
+      [ "$#" -eq 0 ] && set -- controller worker
+      services=$(resolve_services "$@") || exit 1
+      # shellcheck disable=SC2086  # deliberate word splitting of the service list
+      set -- $services
+      compose logs -f "$@"
+      ;;
+    ps|status)
+      require_docker
+      compose ps
+      ;;
+    shell)
+      require_docker
+      [ "$#" -ge 1 ] || die "usage: ./dev stack shell {controller|worker}"
+      service=$(resolve_service "$1") ||
+        die "unknown service: $1 (expected controller or worker)"
+      shift
+      compose exec "$service" /bin/sh "$@"
+      ;;
+    reset)
+      require_docker
+      printf 'This deletes local dev containers, volumes, and ./data. Continue? [y/N] '
+      read -r answer
+      case "$answer" in
+        y|Y|yes|YES) ;;
+        *) die "cancelled" ;;
+      esac
+      compose down -v --remove-orphans || true
+      rm -rf data
+      mkdir -p data/worker data/workstation-logs
+      note "local state cleared"
+      ;;
+    config)
+      require_docker
+      compose config "$@"
+      ;;
+    help|-h|--help)
+      printf 'Usage: ./dev stack {up|down|restart|logs|ps|shell|reset|config}\n'
+      ;;
+    *)
+      die "unknown stack command: $action (run ./dev stack help)"
+      ;;
+  esac
+}
+
+# ------------------------------------------------------ quality gates ----
+
+cmd_fmt() {
+  note "gofmt"
+  gofmt -w cmd internal pkg web
+  note "formatted"
+}
+
+cmd_test() {
+  [ "$#" -eq 0 ] && set -- ./...
+  note "go test -race $*"
+  go test -race "$@"
+}
+
+# cmd_check mirrors what .github/workflows/ci.yml enforces, so a green run here
+# means the same run on CI should also be green.
+cmd_check() {
+  failed=0
+  step() {
+    label=$1
+    shift
+    printf '\033[1m==>\033[0m %s\n' "$label"
+    if "$@"; then
+      return 0
+    fi
+    printf '\033[31m    FAILED: %s\033[0m\n' "$label"
+    failed=1
+  }
+
+  unformatted=$(gofmt -l cmd internal pkg web)
+  if [ -n "$unformatted" ]; then
+    printf '\033[1m==>\033[0m gofmt\n'
+    printf '\033[31m    FAILED: these files need gofmt:\033[0m\n%s\n' "$unformatted"
+    failed=1
+  else
+    printf '\033[1m==>\033[0m gofmt (clean)\n'
+  fi
+
+  step "go vet" go vet ./...
+  step "go test -race" go test -race ./...
+  step "app store" go run ./cmd/storectl check
+  step "shell syntax" sh -n scripts/setup.sh scripts/dev-up.sh scripts/install.sh \
+    scripts/manage.sh scripts/dev-build.sh scripts/backup.sh scripts/update.sh \
+    scripts/bootstrap.sh scripts/release.sh scripts/next-release.sh \
+    build/wslan-entrypoint.sh dev
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    step "compose config" env WORKER_TOKEN=build-only-token-not-used-at-runtime \
+      docker compose --env-file .env.example config --quiet
+  else
+    printf '\033[1m==>\033[0m compose config (skipped, Docker unavailable)\n'
+  fi
+
+  if [ "$failed" -eq 0 ]; then
+    printf '\n\033[32mAll checks passed.\033[0m\n'
+  else
+    printf '\n\033[31mSome checks failed.\033[0m\n'
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------- deploy ----
+
+# set_env_value rewrites one KEY="value" line in a dotenv file, appending it if
+# it is not already present. Values are written double-quoted to match what the
+# installer produces.
+set_env_value() {
+  file=$1
+  key=$2
+  value=$3
+  temporary="$file.dev-tmp"
+  if grep -q "^$key=" "$file" 2>/dev/null; then
+    awk -v key="$key" -v value="$value" '
+      index($0, key "=") == 1 { printf "%s=\"%s\"\n", key, value; next }
+      { print }
+    ' "$file" >"$temporary"
+  else
+    cp "$file" "$temporary"
+    printf '%s="%s"\n' "$key" "$value" >>"$temporary"
+  fi
+  cat "$temporary" >"$file"
+  rm -f "$temporary"
+}
+
+# cmd_deploy points an existing standalone installation at images built from
+# this checkout. It is the fast path for reproducing a release-shaped bug
+# without tagging, pushing, or downloading anything.
+cmd_deploy() {
+  target=""
+  restart=0
+  tag=$LOCAL_IMAGE_TAG
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --tag) [ "$#" -ge 2 ] || die "--tag needs a value"; tag=$2; shift 2 ;;
+      --restart) restart=1; shift ;;
+      -*) die "unknown option: $1" ;;
+      *) target=$1; shift ;;
+    esac
+  done
+  [ -n "$target" ] || die "usage: ./dev deploy DIRECTORY [--tag TAG] [--restart]"
+  require_docker
+
+  target=$(CDPATH= cd -- "$target" 2>/dev/null && pwd) || die "no such directory"
+  [ -f "$target/compose.yaml" ] || die "$target has no compose.yaml; is it an installation?"
+  [ -f "$target/.env" ] || die "$target has no .env; is it an installation?"
+
+  note "building local images tagged $LOCAL_IMAGE_REPOSITORY-*:$tag"
+  for component in controller worker wslan; do
+    printf '    %s\n' "$component"
+    docker build \
+      -f "build/$component.Dockerfile" \
+      -t "$LOCAL_IMAGE_REPOSITORY-$component:$tag" \
+      . >/dev/null
+  done
+
+  cp "$target/.env" "$target/.env.dev-backup"
+  set_env_value "$target/.env" WM_IMAGE_REPOSITORY "$LOCAL_IMAGE_REPOSITORY"
+  set_env_value "$target/.env" WM_VERSION "$tag"
+  note "pointed $target/.env at the local images (previous copy: .env.dev-backup)"
+
+  # The installation mounts its own copies of the core app and template
+  # configuration, so local manifest edits have to be copied across or the
+  # containers keep running the versions the release shipped.
+  if [ -d "$target/config/apps" ]; then
+    cp -R core_apps/. "$target/config/apps/"
+    note "synced core_apps -> config/apps"
+  fi
+  if [ -d "$target/config/templates" ]; then
+    cp -R core_templates/. "$target/config/templates/"
+    note "synced core_templates -> config/templates"
+  fi
+
+  if [ "$restart" -eq 1 ]; then
+    note "restarting $target"
+    ( cd "$target" && docker compose --env-file .env up -d --force-recreate )
+    ( cd "$target" && docker compose ps )
+  else
+    printf '\nNow run:\n  cd %s && docker compose up -d --force-recreate\n' "$target"
+    printf 'Or re-run with --restart to do that automatically.\n'
+  fi
+}
+
+# --------------------------------------------------------------- doctor ----
+
+cmd_doctor() {
+  ok=0
+  check() {
+    label=$1
+    shift
+    if "$@" >/dev/null 2>&1; then
+      printf '  \033[32mok\033[0m    %s\n' "$label"
+    else
+      printf '  \033[31mfail\033[0m  %s\n' "$label"
+      ok=1
+    fi
+  }
+  printf 'Toolchain\n'
+  check "go is installed" command -v go
+  check "docker is installed" command -v docker
+  check "docker is running" docker info
+  check "compose v2 available" docker compose version
+  printf 'Repository\n'
+  check ".env exists" test -f .env
+  check "core apps present" test -d core_apps/terminal
+  check "core templates present" test -d core_templates
+  check "module builds" go build ./...
+  [ "$ok" -eq 0 ] || return 1
+  printf '\n\033[32mReady.\033[0m\n'
+}
+
+# ----------------------------------------------------------------- help ----
+
+cmd_help() {
+  cat <<'EOF'
+Usage: ./dev COMMAND [ARGS]
+
+Build and run from this checkout
+  build [all|SERVICE...]  Build images from source (no argument or "all" builds
+                          all three; otherwise controller, worker, and/or wslan)
+  stack up                Build and start the local stack
+  stack down              Stop and remove containers
+  stack restart [svc...]  Restart services (default: controller and worker)
+  stack logs [svc...]     Follow logs
+  stack ps                Show service state
+  stack shell SERVICE     Open a shell in a running service (controller|worker)
+  stack reset             Delete local containers, volumes, and ./data
+  stack config            Print the resolved Compose configuration
+
+Before committing
+  check                   Run everything CI runs (fmt, vet, race tests, store, compose)
+  test [packages...]      go test -race (default: ./...)
+  fmt                     Rewrite with gofmt
+
+Test a release-shaped install without GitHub
+  deploy DIR [--tag T] [--restart]
+                          Build local images, point an existing installation at
+                          them, and sync core apps and templates into it
+
+Other
+  doctor                  Check the toolchain and this checkout
+  help                    Show this message
+
+Services are named controller, worker, and wslan. The longer Compose names
+(docker-worker, wslan-image) are accepted too.
+
+Examples
+  ./dev build all
+  ./dev build controller       # rebuild just the controller
+  ./dev stack up
+  ./dev stack logs worker
+  ./dev check
+  ./dev deploy ~/Desktop/dockerbox_test/contain-yourself --restart
+EOF
+}
+
+command=${1:-help}
+[ "$#" -gt 0 ] && shift
+case "$command" in
+  build) cmd_build "$@" ;;
+  stack) cmd_stack "$@" ;;
+  check) cmd_check "$@" ;;
+  test) cmd_test "$@" ;;
+  fmt) cmd_fmt "$@" ;;
+  deploy) cmd_deploy "$@" ;;
+  doctor) cmd_doctor "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *) die "unknown command: $command (run ./dev help)" ;;
+esac

@@ -6,7 +6,10 @@
 // cannot drift apart on what a mode is called or what it permits.
 package egress
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Mode string
 
@@ -92,6 +95,100 @@ func Parse(value string) (Mode, error) {
 		return "", fmt.Errorf("egress mode %q is not supported", value)
 	}
 	return mode, nil
+}
+
+// AdminOnly reports whether a mode is withheld from ordinary users regardless
+// of what they have been granted.
+//
+// HostGateway lets a workstation reach services listening on the Docker host,
+// which is the widest boundary any mode opens. Granting it per user would make
+// it easy to hand out by accident, so it is reserved for administrators.
+func (m Mode) AdminOnly() bool { return m == HostGateway }
+
+// DefaultGrants is what a newly created user receives. IPv6 is omitted because
+// it needs daemon-level support that a deployment may not have; an
+// administrator turns it on once they know it works.
+func DefaultGrants() []Mode { return []Mode{Direct, WireGuard} }
+
+// Grantable lists the modes an administrator can assign to a user.
+func Grantable() []Mode {
+	result := make([]Mode, 0, len(all))
+	for _, mode := range All() {
+		if !mode.AdminOnly() {
+			result = append(result, mode)
+		}
+	}
+	return result
+}
+
+// ValidateGrants converts submitted values into a grant set, rejecting unknown
+// modes and any mode reserved for administrators.
+func ValidateGrants(values []string) ([]Mode, error) {
+	seen := make(map[Mode]bool)
+	result := make([]Mode, 0, len(values))
+	for _, raw := range values {
+		mode, err := Parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		if mode.AdminOnly() {
+			return nil, fmt.Errorf("egress mode %q cannot be granted to a user", raw)
+		}
+		if !seen[mode] {
+			seen[mode] = true
+			result = append(result, mode)
+		}
+	}
+	return result, nil
+}
+
+// ParseGrants reads a stored grant set. It is deliberately lenient about
+// unrecognised entries so that a grant written by a newer version, or a mode
+// this build has removed, degrades to "not granted" instead of locking the
+// user out of every mode.
+func ParseGrants(encoded string) []Mode {
+	result := make([]Mode, 0, 4)
+	seen := make(map[Mode]bool)
+	for _, raw := range strings.Split(encoded, ",") {
+		mode, err := Parse(strings.TrimSpace(raw))
+		if err != nil || seen[mode] {
+			continue
+		}
+		seen[mode] = true
+		result = append(result, mode)
+	}
+	return result
+}
+
+// FormatGrants encodes a grant set for storage. The vocabulary is a small fixed
+// set of slugs with no separators of their own, so a comma-separated list stays
+// readable in the database and in a form value.
+func FormatGrants(modes []Mode) string {
+	parts := make([]string, 0, len(modes))
+	for _, mode := range modes {
+		parts = append(parts, string(mode))
+	}
+	return strings.Join(parts, ",")
+}
+
+// Granted reports whether a user may create a workstation using mode.
+//
+// An empty grant set denies everything. That is deliberate: an administrator
+// who clears every checkbox means to revoke access, and a permission system
+// should fail closed rather than fall back to a default.
+func Granted(grants []Mode, mode Mode, isAdmin bool) bool {
+	if isAdmin {
+		return mode.Valid()
+	}
+	if mode.AdminOnly() {
+		return false
+	}
+	for _, granted := range grants {
+		if granted == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // Resolve derives the effective mode from a stored value and the legacy

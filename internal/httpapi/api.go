@@ -12,6 +12,7 @@ import (
 
 	"workstation-manager/internal/auth"
 	"workstation-manager/internal/database"
+	"workstation-manager/internal/egress"
 )
 
 func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
@@ -312,6 +313,31 @@ func (s *Server) apiCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
+}
+
+func (s *Server) apiSetUserEgress(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+	var input struct {
+		AllowedEgress []string `json:"allowed_egress"`
+	}
+	if err := decodeAPIJSON(w, r, &input); err != nil {
+		return
+	}
+	grants, err := egress.ValidateGrants(input.AllowedEgress)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	encoded := egress.FormatGrants(grants)
+	if err := s.db.SetUserEgress(r.Context(), id, encoded); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "allowed_egress": encoded})
 }
 
 func (s *Server) apiRescan(w http.ResponseWriter, r *http.Request) {

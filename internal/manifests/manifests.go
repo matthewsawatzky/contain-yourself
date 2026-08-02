@@ -272,6 +272,19 @@ func Validate(m Manifest, packageDirectory string) error {
 	if m.Health.Type != "" && m.Health.Type != "http" && m.Health.Type != "tcp" {
 		return errors.New("health.type must be http or tcp")
 	}
+	// The health probe reaches the app directly through WSLAN and does not
+	// apply the proxy's prefix handling, so health.path has to be the path the
+	// app itself serves. When strip_prefix is false the app is serving under
+	// its base_path, and a bare "/" will 404 until the probe times out --
+	// which fails provisioning long after the app is actually up.
+	if m.Runtime.Type == "container-service" && m.Health.Path != "" && !m.Routing.StripPrefix {
+		base := strings.TrimSuffix(m.Routing.BasePath, "/")
+		if base != "" && !strings.HasPrefix(m.Health.Path, base) {
+			return fmt.Errorf(
+				"health.path %q must begin with %q because strip_prefix is false",
+				m.Health.Path, base+"/")
+		}
+	}
 	switch m.Desktop.Role {
 	case "":
 	case RoleLauncher:

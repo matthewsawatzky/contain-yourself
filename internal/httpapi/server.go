@@ -85,6 +85,20 @@ type egressChoice struct {
 	RequiresProfile bool
 }
 
+// grantableChoices lists the modes an administrator can assign to a user,
+// which excludes the administrator-only ones.
+func grantableChoices() []egressChoice {
+	modes := egress.Grantable()
+	result := make([]egressChoice, 0, len(modes))
+	for _, mode := range modes {
+		result = append(result, egressChoice{
+			Value: string(mode), Label: mode.Label(), Description: mode.Description(),
+			RequiresProfile: mode.RequiresVPNProfile(),
+		})
+	}
+	return result
+}
+
 func egressChoices() []egressChoice {
 	modes := egress.All()
 	result := make([]egressChoice, 0, len(modes))
@@ -124,6 +138,16 @@ func New(cfg config.Controller, db *database.DB, worker *workerclient.Client, lo
 		// legacy vpn_required flag for presets that predate named modes.
 		"egressLabel": func(mode string, vpnRequired bool) string {
 			return egress.Resolve(mode, vpnRequired).Label()
+		},
+		// hasEgress lets the users page render a checked box per granted mode
+		// without the template needing to know how grants are encoded.
+		"hasEgress": func(encoded, mode string) bool {
+			for _, granted := range egress.ParseGrants(encoded) {
+				if string(granted) == mode {
+					return true
+				}
+			}
+			return false
 		},
 		"appName": func(appID string) string {
 			server.registryMu.RLock()
@@ -196,6 +220,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /workstations/{id}/accent", s.requireUser(http.HandlerFunc(s.setWorkstationAccent)))
 	mux.Handle("GET /users", s.requireAdmin(http.HandlerFunc(s.usersPage)))
 	mux.Handle("POST /users", s.requireAdmin(http.HandlerFunc(s.createUser)))
+	mux.Handle("POST /users/{id}/egress", s.requireAdmin(http.HandlerFunc(s.setUserEgress)))
 	mux.Handle("GET /vpn-profiles", s.requireUser(http.HandlerFunc(s.vpnProfilesPage)))
 	mux.Handle("POST /vpn-profiles", s.requireUser(http.HandlerFunc(s.createVPNProfile)))
 	mux.Handle("POST /vpn-profiles/{id}/enabled", s.requireUser(http.HandlerFunc(s.setVPNProfileEnabled)))
@@ -237,6 +262,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/vpn-profiles/{id}/enabled", s.requireUser(http.HandlerFunc(s.apiSetVPNProfileEnabled)))
 	mux.Handle("GET /api/v1/users", s.requireAdmin(http.HandlerFunc(s.apiUsers)))
 	mux.Handle("POST /api/v1/users", s.requireAdmin(http.HandlerFunc(s.apiCreateUser)))
+	mux.Handle("POST /api/v1/users/{id}/egress", s.requireAdmin(http.HandlerFunc(s.apiSetUserEgress)))
 	mux.Handle("POST /api/v1/admin/rescan", s.requireAdmin(http.HandlerFunc(s.apiRescan)))
 	mux.Handle("POST /api/v1/admin/app-store/sync", s.requireAdmin(http.HandlerFunc(s.apiAppStoreSync)))
 	mux.Handle("POST /api/v1/admin/app-store/apps/{id}/install", s.requireAdmin(http.HandlerFunc(s.apiAppStoreInstall)))

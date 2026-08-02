@@ -2,7 +2,7 @@
 {{template "nav" .}}
 <main class="page">
   <section class="hero">
-    <div><div class="eyebrow">Administration</div><h1>Users</h1><p class="lead">Create accounts that can use organization VPN profiles and add private profiles of their own.</p></div>
+    <div><h1>Users</h1><p class="lead">Accounts, and the connection types each one may create workstations with.</p></div>
   </section>
   {{template "flash" .}}
   <div class="dashboard-grid">
@@ -10,9 +10,21 @@
       <div class="cards">
         {{range .Users}}
         <article class="ws-card">
-          <div class="card-top"><span class="machine-icon">U</span><span class="status">{{if .IsAdmin}}administrator{{else}}user{{end}}</span></div>
+          <div class="card-top"><span class="machine-icon">{{slice .Username 0 1}}</span><span class="status">{{if .IsAdmin}}administrator{{else}}user{{end}}</span></div>
           <h2>{{.Username}}</h2>
           <code>User {{.ID}}</code>
+          {{if .IsAdmin}}
+          <div class="card-foot"><span>Every connection type, including host access</span></div>
+          {{else}}
+          <form method="post" action="/users/{{.ID}}/egress" class="grant-form">
+            <span class="grant-label">Allowed connections</span>
+            {{$user := .}}
+            {{range $.EgressModes}}
+            <label class="check"><input type="checkbox" name="allowed_egress" value="{{.Value}}"{{if hasEgress $user.AllowedEgress .Value}} checked{{end}}><span><b>{{.Label}}</b><small>{{.Description}}</small></span></label>
+            {{end}}
+            <div class="card-foot"><span>Unchecking everything blocks all new workstations</span><button>Save</button></div>
+          </form>
+          {{end}}
         </article>
         {{end}}
       </div>
@@ -24,10 +36,13 @@
         <label>Username<input name="username" required maxlength="64" autocomplete="off"></label>
         <label>Password<input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
         <label>Confirm password<input name="confirm_password" type="password" required minlength="12" autocomplete="new-password"></label>
+        <fieldset><legend>Allowed connections</legend>
+          {{range .EgressModes}}<label class="check"><input type="checkbox" name="allowed_egress" value="{{.Value}}"{{if ne .Value "ipv6"}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+        </fieldset>
         <label class="check"><input type="checkbox" name="is_admin" value="true"><span>Administrator</span></label>
         <button class="primary">Create user</button>
       </form>
-      <p class="fine">New users immediately see enabled global VPN profiles. Profiles they upload remain private to their account.</p>
+      <p class="fine">Administrators may use every connection type, including host access, and that cannot be narrowed. New users immediately see enabled global VPN profiles; profiles they upload remain private to their account.</p>
     </aside>
   </div>
 </main>

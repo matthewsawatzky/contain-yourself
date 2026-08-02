@@ -75,13 +75,18 @@ local Docker platform:
 ```bash
 git clone https://github.com/matthewsawatzky/contain-yourself.git
 cd contain-yourself
-./scripts/dev-up.sh
+./dev stack up
 ```
+
+`./dev` drives everyday development: `./dev check` runs everything CI runs, and
+`./dev deploy DIR` points an existing standalone installation at images built
+from the checkout, so a release-shaped bug can be reproduced without publishing
+anything. Run `./dev help` for the full list.
 
 To build without starting:
 
 ```bash
-./scripts/dev-build.sh
+./dev build
 ```
 
 `DOCKER_DEFAULT_PLATFORM=linux/amd64` or `linux/arm64` may be set when a

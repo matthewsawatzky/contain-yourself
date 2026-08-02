@@ -113,7 +113,7 @@ func TestThemeIgnoresAWorkstationTheViewerCannotSee(t *testing.T) {
 	if err := db.SetWorkstationAccent(ctx, "ws-abc123def4", user, "#22c55e"); err != nil {
 		t.Fatal(err)
 	}
-	other, err := db.CreateUser(ctx, "intruder", "unused-hash", false)
+	other, err := db.CreateUser(ctx, "intruder", "unused-hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestSetUserAccentStoresAndResets(t *testing.T) {
 func TestWorkstationAccentCannotBeSetByANonOwner(t *testing.T) {
 	_, db, _, _ := themeFixture(t)
 	ctx := context.Background()
-	other, err := db.CreateUser(ctx, "intruder", "unused-hash", false)
+	other, err := db.CreateUser(ctx, "intruder", "unused-hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}

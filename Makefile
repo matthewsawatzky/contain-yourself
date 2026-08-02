@@ -1,7 +1,15 @@
-.PHONY: build images test fmt vet compose-config store store-check up down logs backup release next-release
+.PHONY: build images test fmt vet compose-config store store-check up down logs backup release next-release check dev-deploy
 
 build:
 	go build ./cmd/...
+
+# ./dev is the everyday driver; these targets remain for muscle memory.
+check:
+	./dev check
+
+dev-deploy:
+	@test -n "$(DIR)" || (echo "usage: make dev-deploy DIR=/path/to/installation"; exit 1)
+	./dev deploy "$(DIR)" --restart
 
 images:
 	./scripts/dev-build.sh

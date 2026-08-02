@@ -22,12 +22,19 @@ type DB struct {
 	sql *sql.DB
 }
 
+// initialAdminEgress is the grant set the first administrator receives. It
+// matches what migration 008 backfills onto pre-existing users.
+const initialAdminEgress = "direct,wireguard,ipv6"
+
 type User struct {
-	ID          int64     `json:"id"`
-	Username    string    `json:"username"`
-	IsAdmin     bool      `json:"is_admin"`
-	AccentColor string    `json:"accent_color,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	IsAdmin  bool   `json:"is_admin"`
+	// AllowedEgress is the comma-separated set of egress modes this user may
+	// create workstations with. Empty denies every mode.
+	AllowedEgress string    `json:"allowed_egress"`
+	AccentColor   string    `json:"accent_color,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type Workstation struct {
@@ -229,8 +236,9 @@ func (db *DB) CreateInitialAdmin(ctx context.Context, username, passwordHash str
 		return User{}, errors.New("initial administrator already exists")
 	}
 	result, err := tx.ExecContext(ctx,
-		"INSERT INTO users(username, password_hash, is_admin, created_at) VALUES(?, ?, 1, ?)",
-		username, passwordHash, now())
+		`INSERT INTO users(username, password_hash, is_admin, allowed_egress, created_at)
+		 VALUES(?, ?, 1, ?, ?)`,
+		username, passwordHash, initialAdminEgress, now())
 	if err != nil {
 		return User{}, err
 	}
@@ -238,34 +246,58 @@ func (db *DB) CreateInitialAdmin(ctx context.Context, username, passwordHash str
 	if err := tx.Commit(); err != nil {
 		return User{}, err
 	}
-	return User{ID: id, Username: username, IsAdmin: true}, nil
+	return User{ID: id, Username: username, IsAdmin: true,
+		AllowedEgress: initialAdminEgress}, nil
 }
 
 func (db *DB) Authenticate(ctx context.Context, username string) (User, string, error) {
 	var user User
 	var passwordHash string
 	err := db.sql.QueryRowContext(ctx,
-		"SELECT id, username, password_hash, is_admin, accent_color FROM users WHERE username = ?",
-		username).Scan(&user.ID, &user.Username, &passwordHash, &user.IsAdmin, &user.AccentColor)
+		`SELECT id, username, password_hash, is_admin, allowed_egress, accent_color
+		 FROM users WHERE username = ?`,
+		username).Scan(&user.ID, &user.Username, &passwordHash, &user.IsAdmin,
+		&user.AllowedEgress, &user.AccentColor)
 	return user, passwordHash, err
 }
 
-func (db *DB) CreateUser(ctx context.Context, username, passwordHash string, isAdmin bool) (User, error) {
+func (db *DB) CreateUser(ctx context.Context, username, passwordHash string,
+	isAdmin bool, allowedEgress string) (User, error) {
 	stamp := now()
 	result, err := db.sql.ExecContext(ctx,
-		"INSERT INTO users(username, password_hash, is_admin, created_at) VALUES(?, ?, ?, ?)",
-		username, passwordHash, isAdmin, stamp)
+		`INSERT INTO users(username, password_hash, is_admin, allowed_egress, created_at)
+		 VALUES(?, ?, ?, ?, ?)`,
+		username, passwordHash, isAdmin, allowedEgress, stamp)
 	if err != nil {
 		return User{}, err
 	}
 	id, _ := result.LastInsertId()
 	created, _ := time.Parse(time.RFC3339Nano, stamp)
-	return User{ID: id, Username: username, IsAdmin: isAdmin, CreatedAt: created}, nil
+	return User{ID: id, Username: username, IsAdmin: isAdmin,
+		AllowedEgress: allowedEgress, CreatedAt: created}, nil
+}
+
+// SetUserEgress replaces a user's grant set. An empty value revokes every mode.
+func (db *DB) SetUserEgress(ctx context.Context, userID int64, allowedEgress string) error {
+	result, err := db.sql.ExecContext(ctx,
+		"UPDATE users SET allowed_egress = ? WHERE id = ?", allowedEgress, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("user not found")
+	}
+	return nil
 }
 
 func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := db.sql.QueryContext(ctx,
-		"SELECT id, username, is_admin, accent_color, created_at FROM users ORDER BY username")
+		`SELECT id, username, is_admin, allowed_egress, accent_color, created_at
+		 FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +307,7 @@ func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 		var user User
 		var created string
 		if err := rows.Scan(&user.ID, &user.Username, &user.IsAdmin,
-			&user.AccentColor, &created); err != nil {
+			&user.AllowedEgress, &user.AccentColor, &created); err != nil {
 			return nil, err
 		}
 		user.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -325,10 +357,12 @@ func (db *DB) CreateSession(ctx context.Context, userID int64, tokenHash string,
 
 func (db *DB) SessionUser(ctx context.Context, tokenHash string) (User, error) {
 	var user User
-	err := db.sql.QueryRowContext(ctx, `SELECT u.id, u.username, u.is_admin, u.accent_color
+	err := db.sql.QueryRowContext(ctx, `SELECT u.id, u.username, u.is_admin,
+		u.allowed_egress, u.accent_color
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`,
-		tokenHash, now()).Scan(&user.ID, &user.Username, &user.IsAdmin, &user.AccentColor)
+		tokenHash, now()).Scan(&user.ID, &user.Username, &user.IsAdmin,
+		&user.AllowedEgress, &user.AccentColor)
 	if err == nil {
 		_, _ = db.sql.ExecContext(ctx, "UPDATE sessions SET last_used_at = ? WHERE token_hash = ?", now(), tokenHash)
 	}

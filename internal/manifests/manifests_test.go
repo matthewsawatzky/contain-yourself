@@ -14,7 +14,9 @@ func validManifest() Manifest {
 		Network:   Network{Mode: "workstation-vpn"},
 		Storage:   []Storage{{Type: "workspace", Target: "/workspace"}},
 		Resources: Resources{DefaultMemoryMB: 512, DefaultCPU: 0.5},
-		Health:    Health{Type: "http", Path: "/"},
+		// strip_prefix defaults to false here, so the app serves under its base
+		// path and the health path has to match.
+		Health: Health{Type: "http", Path: "/apps/terminal/"},
 	}
 }
 
@@ -161,5 +163,42 @@ func TestValidateRejectsMismatchedAndUnknownDesktopRoles(t *testing.T) {
 	unknown.Desktop.Role = "kiosk"
 	if Validate(unknown, "") == nil {
 		t.Fatal("unknown desktop role was accepted")
+	}
+}
+
+// The health probe reaches the app without the proxy's prefix handling, so an
+// app serving under a base path must advertise that path. Getting this wrong
+// does not fail fast: the app starts, every probe 404s, and provisioning dies
+// 90 seconds later with a timeout that looks like the app never came up.
+func TestValidateRejectsHealthPathOutsideBasePathWhenPrefixIsKept(t *testing.T) {
+	manifest := validManifest()
+	manifest.Routing.StripPrefix = false
+	manifest.Health.Path = "/"
+	if Validate(manifest, "") == nil {
+		t.Fatal("a root health path was accepted for a non-stripping app")
+	}
+}
+
+func TestValidateAcceptsHealthPathUnderBasePath(t *testing.T) {
+	manifest := validManifest()
+	manifest.Routing.StripPrefix = false
+	for _, path := range []string{"/apps/terminal/", "/apps/terminal", "/apps/terminal/health"} {
+		manifest.Health.Path = path
+		if err := Validate(manifest, ""); err != nil {
+			t.Errorf("health path %q rejected: %v", path, err)
+		}
+	}
+}
+
+// When the proxy strips the prefix the app really is serving at the root, so
+// the check must not apply.
+func TestValidateAllowsRootHealthPathWhenPrefixIsStripped(t *testing.T) {
+	manifest := validManifest()
+	manifest.Routing.StripPrefix = true
+	for _, path := range []string{"/", "/healthz"} {
+		manifest.Health.Path = path
+		if err := Validate(manifest, ""); err != nil {
+			t.Errorf("health path %q rejected: %v", path, err)
+		}
 	}
 }

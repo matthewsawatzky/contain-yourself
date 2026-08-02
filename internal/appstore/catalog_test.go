@@ -25,6 +25,7 @@ runtime:
   internal_port: 8080
 routing:
   base_path: /apps/sample/
+  strip_prefix: true
 network:
   mode: workstation-vpn
 storage:

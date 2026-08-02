@@ -27,11 +27,11 @@ func TestPrivateProfileIsEncryptedAndOwnerScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	alice, err := db.CreateUser(ctx, "alice", "unused-hash", false)
+	alice, err := db.CreateUser(ctx, "alice", "unused-hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := db.CreateUser(ctx, "bob", "unused-hash", false)
+	bob, err := db.CreateUser(ctx, "bob", "unused-hash", false, "direct,wireguard")
 	if err != nil {
 		t.Fatal(err)
 	}

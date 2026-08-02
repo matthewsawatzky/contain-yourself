@@ -22,9 +22,11 @@
   <a class="brand" href="/"><span class="brand-mark">W</span><span class="brand-name">Workstation Manager</span></a>
   {{if .User}}
   <nav class="side-nav">
+    <span class="side-label">Workspace</span>
     <a href="/"{{if eq .Title "Dashboard"}} class="current"{{end}}><span class="nav-glyph">▤</span>Workstations</a>
     <a href="/templates"{{if eq .Title "Templates"}} class="current"{{end}}><span class="nav-glyph">◫</span>Templates</a>
     <a href="/app-store"{{if eq .Title "App store"}} class="current"{{end}}><span class="nav-glyph">◈</span>App store</a>
+    <span class="side-label">Account</span>
     <a href="/vpn-profiles"{{if eq .Title "VPN profiles"}} class="current"{{end}}><span class="nav-glyph">⛨</span>VPN profiles</a>
     <a href="/appearance"{{if eq .Title "Appearance"}} class="current"{{end}}><span class="nav-glyph">◐</span>Appearance</a>
     {{if .User.IsAdmin}}<a href="/users"{{if eq .Title "Users"}} class="current"{{end}}><span class="nav-glyph">◍</span>Users</a>{{end}}
@@ -35,6 +37,13 @@
   </div>
   {{end}}
 </aside>
+<header class="topbar">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    {{if .Workstation.ID}}<a href="/">Workstations</a><span class="crumb-sep">›</span><span aria-current="page">{{.Workstation.Name}}</span>
+    {{else}}<span aria-current="page">{{.Title}}</span>{{end}}
+  </nav>
+  {{if .User}}<span class="topbar-right"><span class="health-chip"><i></i>Controller online</span></span>{{end}}
+</header>
 {{end}}
 {{define "flash"}}{{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}{{if .Notice}}<div class="alert">{{.Notice}}</div>{{end}}{{end}}
 {{define "foot"}}

@@ -2,6 +2,45 @@
 
 Requires Go 1.24+, Docker, and Compose.
 
+`./dev` is the entry point for everyday work. It builds and runs everything
+from the checkout, so nothing needs to be tagged, pushed, or downloaded.
+
+```bash
+./dev doctor      # check the toolchain and this checkout
+./dev stack up    # build the three images and start the stack
+./dev stack logs  # follow the controller and worker
+./dev check       # everything CI runs, before you push
+```
+
+Run `./dev help` for the full list.
+
+## Testing a release-shaped install
+
+The repository's own `compose.yaml` builds from source, but a standalone
+installation created by `bootstrap.sh` runs published images from GHCR. To
+reproduce a bug in that shape without cutting a release:
+
+```bash
+./dev deploy ~/path/to/contain-yourself --restart
+```
+
+That builds `contain-yourself-local-{controller,worker,wslan}:dev` from the
+checkout, repoints the installation's `.env` at them (keeping a
+`.env.dev-backup`), and copies `core_apps/` and `core_templates/` into the
+installation's `config/`.
+
+That last step matters more than it looks. An installation mounts its own copy
+of the core app and template configuration, so a manifest edit in this
+repository has no effect on it until the files are synced — a rebuilt image
+alone will not do it.
+
+To go back to published images, restore `.env.dev-backup`, or set
+`WM_IMAGE_REPOSITORY` and `WM_VERSION` back to their release values.
+
+## Underlying commands
+
+`./dev` wraps these; they still work directly.
+
 ```bash
 go test ./...
 go vet ./...

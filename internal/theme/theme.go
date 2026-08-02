@@ -45,10 +45,13 @@ type Palette struct {
 	AccentMuted  string `json:"accent_muted"`
 	AccentSoft   string `json:"accent_soft"`
 	OnAccent     string `json:"on_accent"`
+	Sidebar      string `json:"sidebar"`
 	Background   string `json:"background"`
 	Surface      string `json:"surface"`
 	SurfaceRaise string `json:"surface_raised"`
+	SurfaceSunk  string `json:"surface_sunk"`
 	Line         string `json:"line"`
+	LineStrong   string `json:"line_strong"`
 	Text         string `json:"text"`
 	Muted        string `json:"muted"`
 	Success      string `json:"success"`
@@ -85,23 +88,30 @@ func Resolve(userAccent, workstationAccent string) Palette {
 	return build(accent, source)
 }
 
+// The neutral scale is deliberately free of any blue cast, and the two border
+// values are translucent rather than solid. A solid stroke reads as a box; a
+// low-alpha one reads as a seam, which is most of what makes a dark interface
+// look flat rather than boxed-in.
 func build(accent, source string) Palette {
 	r, g, b := parse(accent)
 	return Palette{
 		Accent:       accent,
-		AccentStrong: hex(lighten(r, g, b, 0.22)),
-		AccentMuted:  hex(mix(r, g, b, 0x11, 0x15, 0x1b, 0.82)),
-		AccentSoft:   hex(mix(r, g, b, 0x0a, 0x0c, 0x10, 0.90)),
+		AccentStrong: hex(lighten(r, g, b, 0.18)),
+		AccentMuted:  hex(mix(r, g, b, 0x18, 0x18, 0x18, 0.80)),
+		AccentSoft:   hex(mix(r, g, b, 0x12, 0x12, 0x12, 0.90)),
 		OnAccent:     onAccent(r, g, b),
-		Background:   "#0a0c10",
-		Surface:      "#11151b",
-		SurfaceRaise: "#151a22",
-		Line:         "#262c36",
-		Text:         "#f3f5f7",
-		Muted:        "#929baa",
-		Success:      "#42d3a2",
-		Warning:      "#f1c75b",
-		Danger:       "#ff6b78",
+		Sidebar:      "#0a0a0a",
+		Background:   "#121212",
+		Surface:      "#181818",
+		SurfaceRaise: "#1f1f1f",
+		SurfaceSunk:  "#0e0e0e",
+		Line:         "rgba(148,148,158,.12)",
+		LineStrong:   "rgba(148,148,158,.20)",
+		Text:         "#fafafa",
+		Muted:        "#9b9ba4",
+		Success:      "#22c55e",
+		Warning:      "#eab308",
+		Danger:       "#ef4444",
 		Source:       source,
 	}
 }
@@ -183,10 +193,13 @@ func (p Palette) CSS() string {
 		{"--accent-muted", p.AccentMuted},
 		{"--accent-soft", p.AccentSoft},
 		{"--on-accent", p.OnAccent},
+		{"--sidebar", p.Sidebar},
 		{"--bg", p.Background},
 		{"--panel", p.Surface},
 		{"--panel-raised", p.SurfaceRaise},
+		{"--panel-soft", p.SurfaceSunk},
 		{"--line", p.Line},
+		{"--line-strong", p.LineStrong},
 		{"--text", p.Text},
 		{"--muted", p.Muted},
 		{"--green", p.Success},

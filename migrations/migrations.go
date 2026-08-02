@@ -17,6 +17,7 @@ var ordered = []string{
 	"005_multiuser_wireguard_profiles.sql",
 	"006_accent_theme.sql",
 	"007_egress_mode.sql",
+	"008_user_egress_grants.sql",
 }
 
 // All returns migrations in version order.

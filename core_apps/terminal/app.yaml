@@ -22,7 +22,10 @@ resources:
   default_cpu: 0.5
 health:
   type: http
-  path: /
+  # ttyd runs with --base-path /apps/terminal and returns 404 for /. The health
+  # probe reaches the app directly, without the proxy's prefix handling, so this
+  # path must be the one the app itself serves.
+  path: /apps/terminal/
   timeout_seconds: 5
 permissions:
   capabilities: []

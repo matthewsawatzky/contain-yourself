@@ -27,7 +27,8 @@ jobs:
         run: make store-check
       - name: Validate shell scripts
         run: |
-          sh -n scripts/*.sh build/wslan-entrypoint.sh
+          sh -n scripts/*.sh build/wslan-entrypoint.sh dev
+          test -x dev
           test -x scripts/bootstrap.sh
           test -x scripts/install.sh
           test -x scripts/manage.sh
