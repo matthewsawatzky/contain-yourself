@@ -54,6 +54,24 @@ desktop:
 ```
 
 `controller-ui` apps cannot declare an image, command or port.
+
+## Desktop roles
+
+`desktop.role` tells the controller what part an app plays in the workstation
+shell. It is optional, and most apps leave it unset.
+
+| Role | Required runtime | Meaning |
+| --- | --- | --- |
+| unset | any | An ordinary app. Appears as a launcher tile. |
+| `launcher` | `controller-ui` | Renders the controller's app launcher. Never listed as a tile on itself, and always reachable through a share because it only lists apps the share already grants. |
+| `desktop` | `container-service` | A full graphical desktop, such as a VNC or RDP session, in place of the launcher. Requires the `open-apps` share permission like any other app. |
+
+The role, not the app id, drives launcher rendering and share authorization, so
+the bundled `web-desktop` launcher can be replaced by another package without
+patching the controller. A `launcher` role on a container app is rejected: that
+would place an untrusted container where the trusted controller page belongs.
+
+Apps with `desktop.visible: false` are omitted from the launcher.
 `container-service` routing must begin with `/apps/<id>`. Icon paths must be
 relative and remain inside the package.
 

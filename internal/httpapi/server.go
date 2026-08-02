@@ -1,22 +1,19 @@
 // Package httpapi implements the controller's HTML and JSON interfaces.
+//
+// The package is split by concern: authentication and sessions in auth.go,
+// workstation lifecycle in workstations.go, share links in sharing.go, the app
+// reverse proxy in proxy.go, the app store in store.go, administrative pages in
+// settings.go, and the JSON client surface in api.go.
 package httpapi
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -24,16 +21,14 @@ import (
 	"time"
 
 	"workstation-manager/internal/appstore"
-	"workstation-manager/internal/auth"
 	"workstation-manager/internal/config"
 	"workstation-manager/internal/database"
+	"workstation-manager/internal/egress"
 	"workstation-manager/internal/manifests"
-	"workstation-manager/internal/proxy"
 	"workstation-manager/internal/sharing"
 	templatesregistry "workstation-manager/internal/templates"
-	"workstation-manager/internal/vpnprofiles"
+	"workstation-manager/internal/theme"
 	"workstation-manager/internal/workerclient"
-	"workstation-manager/internal/workstations"
 	"workstation-manager/pkg/workerapi"
 	"workstation-manager/web"
 )
@@ -54,33 +49,52 @@ type Server struct {
 	logins  map[string]*loginAttempt
 }
 
-type loginAttempt struct {
-	Failures int
-	Blocked  time.Time
-	LastSeen time.Time
+type pageData struct {
+	Title                 string
+	User                  *database.User
+	Error                 string
+	Notice                string
+	Next                  string
+	Workstations          []database.Workstation
+	Workstation           database.Workstation
+	Templates             []templatesregistry.Template
+	Apps                  []manifests.Entry
+	LauncherApps          []launcherApp
+	Events                []database.Event
+	AppBase               string
+	Shares                []database.Share
+	ShareURL              string
+	Shared                bool
+	SharePermissions      []sharing.Permission
+	Usage                 []workerapi.ResourceUsage
+	VPNProfiles           []database.VPNProfile
+	Users                 []database.User
+	StoreApps             []appstore.AppView
+	StoreStatus           appstore.SyncStatus
+	EgressModes           []egressChoice
+	DefaultWorkspaceImage string
+	Theme                 theme.Palette
+	Presets               []theme.Preset
 }
 
-type pageData struct {
-	Title            string
-	User             *database.User
-	Error            string
-	Notice           string
-	Next             string
-	Workstations     []database.Workstation
-	Workstation      database.Workstation
-	Templates        []templatesregistry.Template
-	Apps             []manifests.Entry
-	Events           []database.Event
-	AppBase          string
-	Shares           []database.Share
-	ShareURL         string
-	Shared           bool
-	SharePermissions []sharing.Permission
-	Usage            []workerapi.ResourceUsage
-	VPNProfiles      []database.VPNProfile
-	Users            []database.User
-	StoreApps        []appstore.AppView
-	StoreStatus      appstore.SyncStatus
+// egressChoice is one option in the template builder's connection menu.
+type egressChoice struct {
+	Value           string
+	Label           string
+	Description     string
+	RequiresProfile bool
+}
+
+func egressChoices() []egressChoice {
+	modes := egress.All()
+	result := make([]egressChoice, 0, len(modes))
+	for _, mode := range modes {
+		result = append(result, egressChoice{
+			Value: string(mode), Label: mode.Label(),
+			Description: mode.Description(), RequiresProfile: mode.RequiresVPNProfile(),
+		})
+	}
+	return result
 }
 
 type contextKey int
@@ -89,9 +103,36 @@ const userKey contextKey = 1
 const shareKey contextKey = 2
 
 func New(cfg config.Controller, db *database.DB, worker *workerclient.Client, logger *slog.Logger) (*Server, error) {
+	server := &Server{logins: make(map[string]*loginAttempt)}
 	parsed, err := template.New("ui").Funcs(template.FuncMap{
 		"hasPermission": func(values []sharing.Permission, raw string) bool {
 			return sharing.Has(values, sharing.Permission(raw))
+		},
+		// appRole and appName let templates branch on what an app is rather
+		// than on a hard-coded app id, so a replacement launcher or desktop
+		// renders correctly without template edits.
+		"appRole": func(appID string) string {
+			server.registryMu.RLock()
+			defer server.registryMu.RUnlock()
+			app, ok := server.apps.Get(appID)
+			if !ok {
+				return ""
+			}
+			return app.Desktop.Role
+		},
+		// egressLabel renders a template's connection mode, resolving the
+		// legacy vpn_required flag for presets that predate named modes.
+		"egressLabel": func(mode string, vpnRequired bool) string {
+			return egress.Resolve(mode, vpnRequired).Label()
+		},
+		"appName": func(appID string) string {
+			server.registryMu.RLock()
+			defer server.registryMu.RUnlock()
+			app, ok := server.apps.Get(appID)
+			if !ok || app.Name == "" {
+				return appID
+			}
+			return app.Name
 		},
 		"canManageVPN": func(profile database.VPNProfile, user *database.User) bool {
 			return user != nil && (user.IsAdmin ||
@@ -101,10 +142,8 @@ func New(cfg config.Controller, db *database.DB, worker *workerclient.Client, lo
 	if err != nil {
 		return nil, fmt.Errorf("parse UI templates: %w", err)
 	}
-	server := &Server{
-		config: cfg, db: db, worker: worker, log: logger, templates: parsed,
-		logins: make(map[string]*loginAttempt),
-	}
+	server.config, server.db, server.worker = cfg, db, worker
+	server.log, server.templates = logger, parsed
 	coreRegistry, err := manifests.Scan(cfg.AppsDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("scan core apps: %w", err)
@@ -140,6 +179,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
+	mux.HandleFunc("GET /theme.css", s.themeStylesheet)
 	mux.HandleFunc("GET /setup", s.setupGet)
 	mux.HandleFunc("POST /setup", s.setupPost)
 	mux.HandleFunc("GET /login", s.loginGet)
@@ -151,6 +191,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /templates", s.requireUser(http.HandlerFunc(s.templatesPage)))
 	mux.Handle("POST /templates", s.requireAdmin(http.HandlerFunc(s.createCustomTemplate)))
 	mux.Handle("POST /templates/{id}/delete", s.requireAdmin(http.HandlerFunc(s.deleteCustomTemplate)))
+	mux.Handle("GET /appearance", s.requireUser(http.HandlerFunc(s.appearancePage)))
+	mux.Handle("POST /appearance", s.requireUser(http.HandlerFunc(s.setUserAccent)))
+	mux.Handle("POST /workstations/{id}/accent", s.requireUser(http.HandlerFunc(s.setWorkstationAccent)))
 	mux.Handle("GET /users", s.requireAdmin(http.HandlerFunc(s.usersPage)))
 	mux.Handle("POST /users", s.requireAdmin(http.HandlerFunc(s.createUser)))
 	mux.Handle("GET /vpn-profiles", s.requireUser(http.HandlerFunc(s.vpnProfilesPage)))
@@ -183,6 +226,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/workstations/{id}/shares", s.requireUser(http.HandlerFunc(s.apiShares)))
 	mux.Handle("POST /api/v1/workstations/{id}/shares", s.requireUser(http.HandlerFunc(s.apiCreateShare)))
 	mux.Handle("POST /api/v1/workstations/{id}/shares/{share}/revoke", s.requireUser(http.HandlerFunc(s.apiRevokeShare)))
+	mux.HandleFunc("GET /api/v1/theme", s.apiTheme)
+	mux.Handle("POST /api/v1/theme", s.requireUser(http.HandlerFunc(s.apiSetUserAccent)))
+	mux.Handle("POST /api/v1/workstations/{id}/theme", s.requireUser(http.HandlerFunc(s.apiSetWorkstationAccent)))
 	mux.Handle("GET /api/v1/apps", s.requireUser(http.HandlerFunc(s.apiApps)))
 	mux.Handle("GET /api/v1/app-store", s.requireUser(http.HandlerFunc(s.apiAppStore)))
 	mux.Handle("GET /api/v1/templates", s.requireUser(http.HandlerFunc(s.apiTemplates)))
@@ -216,1251 +262,6 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-}
-
-func (s *Server) setupGet(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := s.db.HasUsers(r.Context())
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	if hasUsers {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	s.render(w, "setup.html", pageData{Title: "Setup"})
-}
-
-func (s *Server) setupPost(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		s.render(w, "setup.html", pageData{Title: "Setup", Error: "Invalid form submission."})
-		return
-	}
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
-	if len(username) < 3 || len(username) > 64 || strings.ContainsAny(username, " \t\r\n") {
-		s.render(w, "setup.html", pageData{Title: "Setup", Error: "Username must be 3–64 characters without spaces."})
-		return
-	}
-	if password != r.FormValue("confirm_password") {
-		s.render(w, "setup.html", pageData{Title: "Setup", Error: "Passwords do not match."})
-		return
-	}
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		s.render(w, "setup.html", pageData{Title: "Setup", Error: err.Error()})
-		return
-	}
-	user, err := s.db.CreateInitialAdmin(r.Context(), username, hash)
-	if err != nil {
-		s.render(w, "setup.html", pageData{Title: "Setup", Error: err.Error()})
-		return
-	}
-	if err := s.startSession(w, r, user.ID); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	s.log.Info("initial administrator created", "user_id", user.ID)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func (s *Server) loginGet(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := s.db.HasUsers(r.Context())
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	if !hasUsers {
-		http.Redirect(w, r, "/setup", http.StatusSeeOther)
-		return
-	}
-	next := safeNext(r.URL.Query().Get("next"))
-	s.render(w, "login.html", pageData{Title: "Login", Next: next})
-}
-
-func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	ip := remoteIP(r)
-	if wait := s.loginBlocked(ip); wait > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-		s.renderStatus(w, "login.html", http.StatusTooManyRequests,
-			pageData{Title: "Login", Error: "Too many failed attempts. Try again shortly."})
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	user, passwordHash, err := s.db.Authenticate(r.Context(), strings.TrimSpace(r.FormValue("username")))
-	if err != nil || !auth.VerifyPassword(passwordHash, r.FormValue("password")) {
-		s.recordLogin(ip, false)
-		time.Sleep(250 * time.Millisecond)
-		s.renderStatus(w, "login.html", http.StatusUnauthorized,
-			pageData{Title: "Login", Error: "Invalid username or password.", Next: safeNext(r.FormValue("next"))})
-		return
-	}
-	s.recordLogin(ip, true)
-	if err := s.startSession(w, r, user.ID); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	http.Redirect(w, r, safeNext(r.FormValue("next")), http.StatusSeeOther)
-}
-
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if cookie, err := r.Cookie("wm_session"); err == nil {
-		_ = s.db.RevokeSession(r.Context(), auth.TokenHash(cookie.Value))
-	}
-	s.clearSession(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-func (s *Server) root(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	if hostname := s.workstationHostname(r.Host); hostname != "" {
-		ws, err := s.db.WorkstationByHostname(r.Context(), hostname, user)
-		if err != nil {
-			s.renderError(w, r, http.StatusNotFound, errors.New("workstation not found"))
-			return
-		}
-		s.render(w, "launcher.html", pageData{Title: ws.Name, User: &user, Workstation: ws})
-		return
-	}
-	workstationList, err := s.db.ListWorkstations(r.Context(), user)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	s.registryMu.RLock()
-	profiles, _ := s.db.ListVPNProfilesForUser(r.Context(), user, true)
-	data := pageData{
-		Title: "Dashboard", User: &user, Workstations: workstationList,
-		Templates: s.presets.All(), Apps: s.apps.Entries(), VPNProfiles: profiles,
-	}
-	s.registryMu.RUnlock()
-	s.render(w, "dashboard.html", data)
-}
-
-func (s *Server) createWorkstation(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	ws, err := s.create(r.Context(), currentUser(r), createInput{
-		Name: r.FormValue("name"), TemplateID: r.FormValue("template_id"),
-		Apps: r.Form["apps"], VPNProfileID: parseOptionalID(r.FormValue("vpn_profile_id")),
-	})
-	if err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	http.Redirect(w, r, "/workstations/"+ws.ID, http.StatusSeeOther)
-}
-
-func (s *Server) templatesPage(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	s.registryMu.RLock()
-	data := pageData{
-		Title: "Templates", User: &user,
-		Templates: s.presets.All(), Apps: s.apps.Entries(),
-	}
-	s.registryMu.RUnlock()
-	s.render(w, "templates.html", data)
-}
-
-func (s *Server) createCustomTemplate(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid form"))
-		return
-	}
-	id := strings.ToLower(strings.TrimSpace(r.FormValue("id")))
-	id = strings.TrimPrefix(id, "custom-")
-	cpu, cpuErr := strconv.ParseFloat(r.FormValue("cpu"), 64)
-	memory, memoryErr := strconv.Atoi(r.FormValue("memory_mb"))
-	pids, pidsErr := strconv.Atoi(r.FormValue("pid_limit"))
-	expires := 0
-	var expiresErr error
-	if raw := strings.TrimSpace(r.FormValue("expires_hours")); raw != "" {
-		expires, expiresErr = strconv.Atoi(raw)
-	}
-	if cpuErr != nil || memoryErr != nil || pidsErr != nil || expiresErr != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity,
-			errors.New("CPU, memory, PID limit, and expiration must be valid numbers"))
-		return
-	}
-	value := templatesregistry.Template{
-		SchemaVersion:  1,
-		ID:             "custom-" + id,
-		Name:           strings.TrimSpace(r.FormValue("name")),
-		Description:    strings.TrimSpace(r.FormValue("description")),
-		WorkspaceImage: "alpine:3.21",
-		Apps:           unique(r.Form["apps"]),
-		VPNRequired:    r.FormValue("vpn_required") == "true",
-		Persistent:     r.FormValue("persistent") == "true",
-		CPU:            cpu,
-		MemoryMB:       memory,
-		PIDLimit:       pids,
-		ExpiresHours:   expires,
-	}
-	s.registryMu.RLock()
-	err := templatesregistry.SaveCustom(s.config.TemplatesDirectory, value, func(id string) bool {
-		_, ok := s.apps.Get(id)
-		return ok
-	})
-	s.registryMu.RUnlock()
-	if err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	if err := s.rescan(); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	http.Redirect(w, r, "/templates", http.StatusSeeOther)
-}
-
-func (s *Server) deleteCustomTemplate(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := templatesregistry.DeleteCustom(
-		s.config.TemplatesDirectory, r.PathValue("id")); err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	if err := s.rescan(); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	http.Redirect(w, r, "/templates", http.StatusSeeOther)
-}
-
-func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
-	users, err := s.db.ListUsers(r.Context())
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	user := currentUser(r)
-	s.render(w, "users.html", pageData{Title: "Users", User: &user, Users: users})
-}
-
-func (s *Server) appStorePage(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	views, status, err := s.store.Views()
-	data := pageData{Title: "App store", User: &user, StoreApps: views, StoreStatus: status}
-	if status.Error != "" {
-		data.Error = "Last synchronization failed: " + status.Error
-	}
-	if err != nil {
-		data.Notice = "Synchronize the catalogue to browse optional apps."
-	}
-	s.render(w, "app-store.html", data)
-}
-
-func (s *Server) appStoreSync(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-	defer cancel()
-	if _, err := s.store.Sync(ctx); err != nil {
-		s.renderError(w, r, http.StatusBadGateway, err)
-		return
-	}
-	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
-}
-
-func (s *Server) appStoreInstall(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-	defer cancel()
-	if _, err := s.store.Install(ctx, r.PathValue("id")); err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	if err := s.rescan(); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
-}
-
-func (s *Server) appStoreRollback(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	if _, err := s.store.Rollback(ctx, r.PathValue("id")); err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	if err := s.rescan(); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	http.Redirect(w, r, "/app-store", http.StatusSeeOther)
-}
-
-func (s *Server) approveStoreManifest(ctx context.Context, manifest manifests.Manifest, manifestPath string) error {
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return err
-	}
-	sum := sha256.Sum256(data)
-	_, err = s.worker.ApproveApp(ctx, manifestAppSpec(manifest, hex.EncodeToString(sum[:])))
-	return err
-}
-
-func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid user form"))
-		return
-	}
-	_, err := s.storeUser(r.Context(), userInput{
-		Username: r.FormValue("username"), Password: r.FormValue("password"),
-		ConfirmPassword: r.FormValue("confirm_password"),
-		IsAdmin:         r.FormValue("is_admin") == "true",
-	})
-	if err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	http.Redirect(w, r, "/users", http.StatusSeeOther)
-}
-
-type userInput struct {
-	Username        string `json:"username"`
-	Password        string `json:"password"`
-	ConfirmPassword string `json:"confirm_password"`
-	IsAdmin         bool   `json:"is_admin"`
-}
-
-func (s *Server) storeUser(ctx context.Context, input userInput) (database.User, error) {
-	input.Username = strings.TrimSpace(input.Username)
-	if len(input.Username) < 3 || len(input.Username) > 64 ||
-		strings.ContainsAny(input.Username, " \t\r\n") {
-		return database.User{}, errors.New("username must be 3–64 characters without spaces")
-	}
-	if input.Password != input.ConfirmPassword {
-		return database.User{}, errors.New("passwords do not match")
-	}
-	hash, err := auth.HashPassword(input.Password)
-	if err != nil {
-		return database.User{}, err
-	}
-	return s.db.CreateUser(ctx, input.Username, hash, input.IsAdmin)
-}
-
-func (s *Server) vpnProfilesPage(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	var profiles []database.VPNProfile
-	var err error
-	if user.IsAdmin {
-		profiles, err = s.db.ListVPNProfiles(r.Context(), false)
-	} else {
-		profiles, err = s.db.ListVPNProfilesForUser(r.Context(), user, false)
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	s.render(w, "vpn-profiles.html", pageData{
-		Title: "VPN profiles", User: &user, VPNProfiles: profiles,
-	})
-}
-
-func (s *Server) createVPNProfile(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid VPN profile form"))
-		return
-	}
-	_, err := s.storeVPNProfile(r.Context(), currentUser(r), vpnProfileInput{
-		Name: r.FormValue("name"), Visibility: r.FormValue("visibility"),
-		AutoAssign:      r.FormValue("auto_assign") == "true",
-		WireGuardConfig: r.FormValue("wireguard_config"),
-	})
-	if err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	http.Redirect(w, r, "/vpn-profiles", http.StatusSeeOther)
-}
-
-func (s *Server) setVPNProfileEnabled(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid VPN profile id"))
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid form"))
-		return
-	}
-	enabled := r.FormValue("enabled") == "true"
-	if err := s.db.SetVPNProfileEnabled(r.Context(), id, currentUser(r), enabled); err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("VPN profile not found"))
-		return
-	}
-	http.Redirect(w, r, "/vpn-profiles", http.StatusSeeOther)
-}
-
-func (s *Server) workstationPage(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), currentUser(r))
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("workstation not found"))
-		return
-	}
-	s.renderWorkstation(w, r, ws, "")
-}
-
-func (s *Server) renderWorkstation(w http.ResponseWriter, r *http.Request, ws database.Workstation, shareURL string) {
-	events, _ := s.db.Events(r.Context(), ws.ID, 100)
-	shares, _ := s.db.ListShares(r.Context(), ws.ID)
-	usageContext, cancel := context.WithTimeout(r.Context(), 4*time.Second)
-	usage, _ := s.worker.Usage(usageContext, ws.ID)
-	cancel()
-	user := currentUser(r)
-	s.render(w, "workstation.html", pageData{
-		Title: ws.Name, User: &user, Workstation: ws, Events: events,
-		Shares: shares, ShareURL: shareURL, Usage: usage.Resources,
-	})
-}
-
-func (s *Server) desktopPage(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), currentUser(r))
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("workstation not found"))
-		return
-	}
-	user := currentUser(r)
-	s.render(w, "launcher.html", pageData{
-		Title: ws.Name, User: &user, Workstation: ws, AppBase: "/workstations/" + ws.ID,
-	})
-}
-
-func (s *Server) workstationAction(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-		return
-	}
-	id, action := r.PathValue("id"), r.PathValue("action")
-	if err := s.beginAction(r.Context(), currentUser(r), id, action); err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-	if action != "delete" {
-		// Browsers get a stable destination while the asynchronous action runs.
-	}
-}
-
-func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid share form"))
-		return
-	}
-	user := currentUser(r)
-	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), user)
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("workstation not found"))
-		return
-	}
-	permissions, expiresAt, maxUses, recipient, err := parseShareInput(
-		r.Form["permissions"], r.FormValue("expires_hours"),
-		r.FormValue("max_uses"), r.FormValue("recipient"))
-	if err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	raw, hash, err := auth.RandomToken(32)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	if _, err := s.db.CreateShare(r.Context(), ws.ID, user.ID, hash, permissions,
-		recipient, expiresAt, maxUses); err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err)
-		return
-	}
-	_ = s.db.RecordEvent(r.Context(), ws.ID, "share.created",
-		"Workstation share created for "+shareRecipient(recipient))
-	s.renderWorkstation(w, r, ws, "/share/"+raw)
-}
-
-func (s *Server) revokeShare(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), user)
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("workstation not found"))
-		return
-	}
-	shareID, err := strconv.ParseInt(r.PathValue("share"), 10, 64)
-	if err != nil || shareID <= 0 {
-		s.renderError(w, r, http.StatusBadRequest, errors.New("invalid share id"))
-		return
-	}
-	if err := s.db.RevokeShare(r.Context(), ws.ID, shareID); err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("share not found or already revoked"))
-		return
-	}
-	_ = s.db.RecordEvent(r.Context(), ws.ID, "share.revoked", "Workstation share revoked")
-	http.Redirect(w, r, "/workstations/"+ws.ID, http.StatusSeeOther)
-}
-
-func (s *Server) redeemShare(w http.ResponseWriter, r *http.Request) {
-	token := r.PathValue("token")
-	if len(token) < 32 || len(token) > 128 {
-		s.renderError(w, r, http.StatusNotFound, errors.New("share is invalid or unavailable"))
-		return
-	}
-	share, err := s.db.RedeemShare(r.Context(), auth.TokenHash(token))
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, errors.New("share is invalid, expired, revoked, or fully used"))
-		return
-	}
-	maxAge := 0
-	var expires time.Time
-	if share.ExpiresAt != nil {
-		expires = *share.ExpiresAt
-		maxAge = max(1, int(time.Until(expires).Seconds()))
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "wm_share", Value: token, Path: "/shared/" + share.WorkstationID,
-		Expires: expires, MaxAge: maxAge, HttpOnly: true, Secure: s.config.SecureCookies,
-		SameSite: http.SameSiteLaxMode,
-	})
-	_ = s.db.RecordEvent(r.Context(), share.WorkstationID, "share.redeemed", "Workstation share redeemed")
-	http.Redirect(w, r, "/shared/"+share.WorkstationID, http.StatusSeeOther)
-}
-
-func (s *Server) requireShare(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		workstationID := r.PathValue("id")
-		cookie, err := r.Cookie("wm_share")
-		if err != nil {
-			s.renderError(w, r, http.StatusUnauthorized, errors.New("share authentication required"))
-			return
-		}
-		share, err := s.db.ValidateShare(r.Context(), auth.TokenHash(cookie.Value), workstationID)
-		if err != nil {
-			s.clearShare(w, workstationID)
-			s.renderError(w, r, http.StatusForbidden, errors.New("share is expired or revoked"))
-			return
-		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead &&
-			r.Method != http.MethodOptions && !sameOrigin(r) {
-			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), shareKey, share)))
-	})
-}
-
-func (s *Server) sharedLauncher(w http.ResponseWriter, r *http.Request) {
-	share := currentShare(r)
-	ws, err := s.db.Workstation(r.Context(), share.WorkstationID, database.User{IsAdmin: true})
-	if err != nil || ws.State == string(workstations.StateDeleted) {
-		s.renderError(w, r, http.StatusNotFound, errors.New("workstation is unavailable"))
-		return
-	}
-	filtered := ws.Apps[:0]
-	for _, app := range ws.Apps {
-		if app.AppID == "web-desktop" || shareCanOpenApp(share, app.AppID, http.MethodGet) {
-			filtered = append(filtered, app)
-		}
-	}
-	ws.Apps = filtered
-	s.render(w, "launcher.html", pageData{
-		Title: ws.Name, Workstation: ws, AppBase: "/shared/" + ws.ID,
-		Shared: true, SharePermissions: share.Permissions,
-	})
-}
-
-func (s *Server) proxyShared(w http.ResponseWriter, r *http.Request) {
-	share := currentShare(r)
-	appID := r.PathValue("app")
-	if !shareCanOpenApp(share, appID, r.Method) {
-		http.Error(w, "share permission denied", http.StatusForbidden)
-		return
-	}
-	ws, err := s.db.Workstation(r.Context(), share.WorkstationID, database.User{IsAdmin: true})
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	s.proxyApp(w, r, ws, appID, "/shared/"+ws.ID)
-}
-
-func (s *Server) sharedAction(w http.ResponseWriter, r *http.Request) {
-	share := currentShare(r)
-	action := r.PathValue("action")
-	required := map[string]sharing.Permission{
-		"restart": sharing.RestartWorkstation,
-		"stop":    sharing.StopWorkstation,
-	}[action]
-	if required == "" || !sharing.Has(share.Permissions, required) {
-		http.Error(w, "share permission denied", http.StatusForbidden)
-		return
-	}
-	if err := s.beginAction(r.Context(), database.User{IsAdmin: true},
-		share.WorkstationID, action); err != nil {
-		s.renderError(w, r, http.StatusUnprocessableEntity, err)
-		return
-	}
-	http.Redirect(w, r, "/shared/"+share.WorkstationID, http.StatusSeeOther)
-}
-
-func (s *Server) sharedLogout(w http.ResponseWriter, r *http.Request) {
-	share := currentShare(r)
-	s.clearShare(w, share.WorkstationID)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-func (s *Server) clearShare(w http.ResponseWriter, workstationID string) {
-	http.SetCookie(w, &http.Cookie{
-		Name: "wm_share", Value: "", Path: "/shared/" + workstationID,
-		MaxAge: -1, HttpOnly: true, Secure: s.config.SecureCookies,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func currentShare(r *http.Request) database.Share {
-	share, _ := r.Context().Value(shareKey).(database.Share)
-	return share
-}
-
-func shareCanOpenApp(share database.Share, appID, method string) bool {
-	switch appID {
-	case "terminal":
-		return sharing.Has(share.Permissions, sharing.TerminalControl)
-	case "files":
-		if method == http.MethodGet || method == http.MethodHead {
-			return sharing.Has(share.Permissions, sharing.OpenApps) ||
-				sharing.Has(share.Permissions, sharing.DownloadFiles)
-		}
-		return sharing.Has(share.Permissions, sharing.UploadFiles)
-	case "web-desktop":
-		return true
-	default:
-		return sharing.Has(share.Permissions, sharing.OpenApps)
-	}
-}
-
-func parseShareInput(rawPermissions []string, expiresRaw, maxUsesRaw, recipient string) (
-	[]sharing.Permission, *time.Time, *int, string, error) {
-	permissions, err := sharing.Validate(rawPermissions)
-	if err != nil {
-		return nil, nil, nil, "", err
-	}
-	var expiresAt *time.Time
-	if expiresRaw != "" && expiresRaw != "0" {
-		hours, err := strconv.Atoi(expiresRaw)
-		if err != nil || hours < 1 || hours > 8760 {
-			return nil, nil, nil, "", errors.New("expiration must be between 1 and 8760 hours")
-		}
-		value := time.Now().UTC().Add(time.Duration(hours) * time.Hour)
-		expiresAt = &value
-	}
-	var maxUses *int
-	if maxUsesRaw != "" && maxUsesRaw != "0" {
-		uses, err := strconv.Atoi(maxUsesRaw)
-		if err != nil || uses < 1 || uses > 10000 {
-			return nil, nil, nil, "", errors.New("maximum uses must be between 1 and 10000")
-		}
-		maxUses = &uses
-	}
-	recipient = strings.TrimSpace(recipient)
-	if len(recipient) > 128 {
-		return nil, nil, nil, "", errors.New("recipient name is too long")
-	}
-	return permissions, expiresAt, maxUses, recipient, nil
-}
-
-func shareRecipient(recipient string) string {
-	if recipient == "" {
-		return "an unnamed recipient"
-	}
-	return recipient
-}
-
-type createInput struct {
-	Name         string   `json:"name"`
-	TemplateID   string   `json:"template_id"`
-	Apps         []string `json:"apps"`
-	VPNProfileID *int64   `json:"vpn_profile_id,omitempty"`
-}
-
-type vpnProfileInput struct {
-	Name            string `json:"name"`
-	Visibility      string `json:"visibility"`
-	AutoAssign      bool   `json:"auto_assign"`
-	WireGuardConfig string `json:"wireguard_config"`
-}
-
-func (s *Server) storeVPNProfile(ctx context.Context, user database.User,
-	input vpnProfileInput) (database.VPNProfile, error) {
-	input.Name = strings.TrimSpace(input.Name)
-	if len(input.Name) < 2 || len(input.Name) > 80 {
-		return database.VPNProfile{}, errors.New("profile name must contain 2–80 characters")
-	}
-	input.Visibility = strings.ToLower(strings.TrimSpace(input.Visibility))
-	if !user.IsAdmin {
-		input.Visibility = "private"
-	}
-	if input.Visibility == "" {
-		input.Visibility = "private"
-	}
-	if input.Visibility != "private" && input.Visibility != "global" {
-		return database.VPNProfile{}, errors.New("visibility must be private or global")
-	}
-	if input.AutoAssign && (!user.IsAdmin || input.Visibility != "global") {
-		return database.VPNProfile{}, errors.New("only administrators can recommend global profiles")
-	}
-	parsed, err := vpnprofiles.Parse(input.WireGuardConfig)
-	if err != nil {
-		return database.VPNProfile{}, err
-	}
-	store := vpnprofiles.Store{
-		Directory: s.config.VPNProfilesDirectory,
-		KeyFile:   s.config.VPNEncryptionKeyFile,
-	}
-	ref, err := store.Save(parsed.Canonical)
-	if err != nil {
-		return database.VPNProfile{}, err
-	}
-	profile := database.VPNProfile{
-		Name: input.Name, Provider: "custom", VPNType: "wireguard",
-		Endpoint: parsed.Endpoint, Visibility: input.Visibility,
-		AutoAssign: input.AutoAssign, ConfigRef: ref, Enabled: true,
-	}
-	if input.Visibility == "private" {
-		profile.OwnerUserID = &user.ID
-	}
-	created, err := s.db.CreateVPNProfile(ctx, profile)
-	if err != nil {
-		store.Remove(ref)
-		return database.VPNProfile{}, err
-	}
-	return created, nil
-}
-
-func (s *Server) loadVPNConfig(profile database.VPNProfile) (string, error) {
-	return (vpnprofiles.Store{
-		Directory: s.config.VPNProfilesDirectory,
-		KeyFile:   s.config.VPNEncryptionKeyFile,
-	}).Load(profile.ConfigRef)
-}
-
-func parseOptionalID(value string) *int64 {
-	id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil || id <= 0 {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) create(ctx context.Context, user database.User, input createInput) (database.Workstation, error) {
-	input.Name = strings.TrimSpace(input.Name)
-	if len(input.Name) < 2 || len(input.Name) > 80 {
-		return database.Workstation{}, errors.New("name must contain 2–80 characters")
-	}
-	s.registryMu.RLock()
-	preset, ok := s.presets.Get(input.TemplateID)
-	if !ok {
-		s.registryMu.RUnlock()
-		return database.Workstation{}, errors.New("unknown template")
-	}
-	if len(input.Apps) == 0 {
-		input.Apps = append([]string(nil), preset.Apps...)
-	}
-	var dbApps []database.WorkstationApp
-	for _, id := range unique(input.Apps) {
-		app, exists := s.apps.Get(id)
-		if !exists {
-			s.registryMu.RUnlock()
-			return database.Workstation{}, fmt.Errorf("app %q is unavailable", id)
-		}
-		dbApps = append(dbApps, database.WorkstationApp{
-			AppID: app.ID, AppVersion: app.Version, InternalPort: app.Runtime.InternalPort,
-		})
-	}
-	s.registryMu.RUnlock()
-	if len(dbApps) == 0 {
-		return database.Workstation{}, errors.New("at least one app is required")
-	}
-	var vpnProfileID *int64
-	if preset.VPNRequired {
-		if input.VPNProfileID == nil || *input.VPNProfileID <= 0 {
-			return database.Workstation{}, errors.New("this template requires an enabled VPN profile")
-		}
-		profile, err := s.db.VPNProfileForUser(ctx, *input.VPNProfileID, user)
-		if err != nil || !profile.Enabled {
-			return database.Workstation{}, errors.New("selected VPN profile is unavailable")
-		}
-		vpnProfileID = &profile.ID
-	}
-	id, err := workstationID()
-	if err != nil {
-		return database.Workstation{}, err
-	}
-	ws := database.Workstation{
-		ID: id, Name: input.Name, OwnerUserID: user.ID, TemplateID: preset.ID,
-		WorkspaceImage: preset.WorkspaceImage, State: string(workstations.StateCreating),
-		Hostname: id, CPULimit: preset.CPU, MemoryLimitMB: preset.MemoryMB,
-		PIDLimit: preset.PIDLimit, Persistent: preset.Persistent, VPNRequired: preset.VPNRequired,
-		VPNProfileID: vpnProfileID,
-	}
-	if err := s.db.CreateWorkstation(ctx, ws, dbApps); err != nil {
-		return database.Workstation{}, err
-	}
-	go s.provision(ws.ID, user)
-	return ws, nil
-}
-
-func (s *Server) provision(id string, user database.User) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	ws, err := s.db.Workstation(ctx, id, user)
-	if err != nil {
-		return
-	}
-	if err := s.transition(ctx, &ws, workstations.StatePullingImages, ""); err != nil {
-		return
-	}
-	request, err := s.provisionRequest(ctx, ws)
-	if err == nil {
-		_, err = s.worker.Provision(ctx, request)
-	}
-	if err != nil {
-		s.log.Error("workstation provisioning failed", "workstation_id", id, "error", err)
-		_ = s.transition(ctx, &ws, workstations.StateError, err.Error())
-		_ = s.db.SetAppStates(ctx, id, "error")
-		return
-	}
-	if err := s.transition(ctx, &ws, workstations.StateCreatingStorage, ""); err != nil {
-		return
-	}
-	if ws.VPNRequired {
-		for _, state := range []workstations.State{
-			workstations.StateStartingVPN, workstations.StateWaitingForVPN,
-		} {
-			if err := s.transition(ctx, &ws, state, ""); err != nil {
-				return
-			}
-		}
-	}
-	if err := s.transition(ctx, &ws, workstations.StateStartingApps, ""); err != nil {
-		return
-	}
-	s.registryMu.RLock()
-	for _, app := range ws.Apps {
-		if manifest, ok := s.apps.Get(app.AppID); ok {
-			_ = s.db.SetAppVersion(ctx, id, app.AppID, manifest.Version)
-		}
-	}
-	s.registryMu.RUnlock()
-	_ = s.db.SetAppStates(ctx, id, "ready")
-	_ = s.transition(ctx, &ws, workstations.StateReady, "")
-}
-
-func (s *Server) provisionRequest(ctx context.Context, ws database.Workstation) (workerapi.ProvisionRequest, error) {
-	request := workerapi.ProvisionRequest{
-		WorkstationID: ws.ID, Persistent: ws.Persistent, VPNRequired: ws.VPNRequired,
-		MemoryMB: ws.MemoryLimitMB, CPU: ws.CPULimit, PIDLimit: ws.PIDLimit,
-	}
-	if ws.VPNRequired {
-		if ws.VPNProfileID == nil {
-			return request, errors.New("VPN workstation has no selected profile")
-		}
-		profile, err := s.db.VPNProfile(ctx, *ws.VPNProfileID)
-		if err != nil {
-			return request, fmt.Errorf("load VPN profile: %w", err)
-		}
-		if !profile.Enabled {
-			return request, errors.New("selected VPN profile is disabled")
-		}
-		config, err := s.loadVPNConfig(profile)
-		if err != nil {
-			return request, fmt.Errorf("load WireGuard configuration: %w", err)
-		}
-		request.VPNProfile = &workerapi.VPNProfile{
-			WireGuardConfig: config,
-		}
-	}
-	s.registryMu.RLock()
-	defer s.registryMu.RUnlock()
-	for _, dbApp := range ws.Apps {
-		entry, ok := s.apps.Entry(dbApp.AppID)
-		if !ok {
-			return request, fmt.Errorf("app %q disappeared from registry", dbApp.AppID)
-		}
-		app := entry.Manifest
-		if app.Runtime.Type != "container-service" {
-			continue
-		}
-		request.Apps = append(request.Apps, manifestAppSpec(app, entry.SHA256))
-	}
-	return request, nil
-}
-
-func manifestAppSpec(app manifests.Manifest, manifestSHA256 string) workerapi.AppSpec {
-	spec := workerapi.AppSpec{
-		ID: app.ID, Version: app.Version, ManifestSHA256: manifestSHA256,
-		Image: app.Runtime.Image, Command: app.Runtime.Command,
-		Environment: app.Runtime.Environment, InternalPort: app.Runtime.InternalPort,
-		MemoryMB: app.Resources.DefaultMemoryMB, CPU: app.Resources.DefaultCPU,
-		ShmSizeMB: app.Resources.ShmSizeMB, Capabilities: app.Permissions.Capabilities,
-		HealthPath: app.Health.Path, HealthTimeoutSeconds: app.Health.TimeoutSeconds,
-	}
-	for _, storage := range app.Storage {
-		spec.Storage = append(spec.Storage, workerapi.StorageSpec{
-			Type: storage.Type, Target: storage.Target,
-			OwnerUID: storage.OwnerUID, OwnerGID: storage.OwnerGID,
-		})
-	}
-	return spec
-}
-
-func (s *Server) beginAction(ctx context.Context, user database.User, id, action string) error {
-	ws, err := s.db.Workstation(ctx, id, user)
-	if err != nil {
-		return errors.New("workstation not found")
-	}
-	switch action {
-	case "stop":
-		if err := s.transition(ctx, &ws, workstations.StateStopping, ""); err != nil {
-			return err
-		}
-		go s.runAction(id, user, "stop", workstations.StateStopped)
-	case "start":
-		var next = workstations.StateStartingApps
-		if ws.VPNRequired {
-			next = workstations.StateStartingVPN
-		}
-		if err := s.transition(ctx, &ws, next, ""); err != nil {
-			return err
-		}
-		go s.runAction(id, user, "start", workstations.StateReady)
-	case "restart":
-		if err := s.transition(ctx, &ws, workstations.StateStopping, ""); err != nil {
-			return err
-		}
-		go s.runRestart(id, user)
-	case "update":
-		if err := s.transition(ctx, &ws, workstations.StatePullingImages, ""); err != nil {
-			return err
-		}
-		go s.runUpdate(id, user)
-	case "delete":
-		if err := s.transition(ctx, &ws, workstations.StateDeleting, ""); err != nil {
-			return err
-		}
-		go s.runAction(id, user, "delete", workstations.StateDeleted)
-	default:
-		return errors.New("unknown workstation action")
-	}
-	return nil
-}
-
-func (s *Server) runUpdate(id string, user database.User) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	ws, err := s.db.Workstation(ctx, id, user)
-	if err != nil {
-		return
-	}
-	request, err := s.provisionRequest(ctx, ws)
-	if err == nil {
-		_, err = s.worker.Rebuild(ctx, request)
-	}
-	if err != nil {
-		_ = s.transition(ctx, &ws, workstations.StateError, err.Error())
-		_ = s.db.SetAppStates(ctx, id, "error")
-		return
-	}
-	if err := s.transition(ctx, &ws, workstations.StateCreatingStorage, ""); err != nil {
-		return
-	}
-	if ws.VPNRequired {
-		if err := s.transition(ctx, &ws, workstations.StateStartingVPN, ""); err != nil {
-			return
-		}
-		if err := s.transition(ctx, &ws, workstations.StateWaitingForVPN, ""); err != nil {
-			return
-		}
-	}
-	if err := s.transition(ctx, &ws, workstations.StateStartingApps, ""); err != nil {
-		return
-	}
-	s.registryMu.RLock()
-	for _, app := range ws.Apps {
-		if manifest, ok := s.apps.Get(app.AppID); ok {
-			_ = s.db.SetAppVersion(ctx, id, app.AppID, manifest.Version)
-		}
-	}
-	s.registryMu.RUnlock()
-	_ = s.db.SetAppStates(ctx, id, "ready")
-	_ = s.transition(ctx, &ws, workstations.StateReady, "")
-}
-
-func (s *Server) runAction(id string, user database.User, action string, final workstations.State) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	ws, err := s.db.Workstation(ctx, id, user)
-	if err != nil {
-		return
-	}
-	if err := s.worker.Action(ctx, id, action); err != nil {
-		_ = s.transition(ctx, &ws, workstations.StateError, err.Error())
-		return
-	}
-	if action == "start" && ws.VPNRequired {
-		if err := s.transition(ctx, &ws, workstations.StateWaitingForVPN, ""); err != nil {
-			return
-		}
-		if err := s.transition(ctx, &ws, workstations.StateStartingApps, ""); err != nil {
-			return
-		}
-	}
-	_ = s.db.SetAppStates(ctx, id, map[string]string{
-		"start": "ready", "stop": "stopped", "delete": "deleted",
-	}[action])
-	_ = s.transition(ctx, &ws, final, "")
-}
-
-func (s *Server) runRestart(id string, user database.User) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	ws, err := s.db.Workstation(ctx, id, user)
-	if err != nil {
-		return
-	}
-	if err := s.worker.Action(ctx, id, "restart"); err != nil {
-		_ = s.transition(ctx, &ws, workstations.StateError, err.Error())
-		return
-	}
-	if err := s.transition(ctx, &ws, workstations.StateStopped, ""); err != nil {
-		return
-	}
-	next := workstations.StateStartingApps
-	if ws.VPNRequired {
-		next = workstations.StateStartingVPN
-	}
-	if err := s.transition(ctx, &ws, next, ""); err != nil {
-		return
-	}
-	if ws.VPNRequired {
-		if err := s.transition(ctx, &ws, workstations.StateWaitingForVPN, ""); err != nil {
-			return
-		}
-		if err := s.transition(ctx, &ws, workstations.StateStartingApps, ""); err != nil {
-			return
-		}
-	}
-	_ = s.db.SetAppStates(ctx, id, "ready")
-	_ = s.transition(ctx, &ws, workstations.StateReady, "")
-}
-
-func (s *Server) transition(ctx context.Context, ws *database.Workstation, next workstations.State, message string) error {
-	current := workstations.State(ws.State)
-	if err := workstations.ValidateTransition(current, next); err != nil {
-		return err
-	}
-	if err := s.db.SetWorkstationState(ctx, ws.ID, ws.State, string(next), message); err != nil {
-		return err
-	}
-	ws.State = string(next)
-	ws.ErrorMessage = message
-	return nil
-}
-
-func (s *Server) proxyExplicit(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), currentUser(r))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	appID := r.PathValue("app")
-	http.SetCookie(w, &http.Cookie{
-		Name: "wm_active_" + appID, Value: ws.ID, Path: "/apps/" + appID + "/",
-		HttpOnly: true, Secure: s.config.SecureCookies, SameSite: http.SameSiteLaxMode,
-	})
-	s.registryMu.RLock()
-	app, ok := s.apps.Get(appID)
-	s.registryMu.RUnlock()
-	if ok && !app.Routing.StripPrefix {
-		destination := strings.TrimPrefix(r.URL.Path, "/workstations/"+ws.ID)
-		if r.URL.RawQuery != "" {
-			destination += "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, destination, http.StatusTemporaryRedirect)
-		return
-	}
-	s.proxyApp(w, r, ws, appID, "/workstations/"+ws.ID)
-}
-
-func (s *Server) proxyHostname(w http.ResponseWriter, r *http.Request) {
-	hostname := s.workstationHostname(r.Host)
-	if hostname == "" {
-		if cookie, err := r.Cookie("wm_active_" + r.PathValue("app")); err == nil {
-			hostname = cookie.Value
-		}
-		if hostname == "" {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	ws, err := s.db.WorkstationByHostname(r.Context(), hostname, currentUser(r))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	s.proxyApp(w, r, ws, r.PathValue("app"), "")
-}
-
-func (s *Server) proxyApp(w http.ResponseWriter, r *http.Request, ws database.Workstation, appID, explicitPrefix string) {
-	if ws.State != string(workstations.StateReady) {
-		http.Error(w, "workstation is not ready", http.StatusServiceUnavailable)
-		return
-	}
-	var installed bool
-	for _, app := range ws.Apps {
-		installed = installed || app.AppID == appID
-	}
-	if !installed {
-		http.NotFound(w, r)
-		return
-	}
-	s.registryMu.RLock()
-	app, ok := s.apps.Get(appID)
-	s.registryMu.RUnlock()
-	if !ok || app.Runtime.Type != "container-service" {
-		http.NotFound(w, r)
-		return
-	}
-	host := "wm-" + ws.ID + "-wslan"
-	target, _ := url.Parse(fmt.Sprintf("http://%s:%d", host, 9000))
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	original := proxy.Director
-	proxy.Director = func(request *http.Request) {
-		original(request)
-		if explicitPrefix != "" {
-			request.URL.Path = strings.TrimPrefix(request.URL.Path, explicitPrefix)
-		}
-		if app.Routing.StripPrefix {
-			request.URL.Path = strings.TrimPrefix(request.URL.Path, "/apps/"+appID)
-			if request.URL.Path == "" {
-				request.URL.Path = "/"
-			}
-		}
-		request.Header.Set("X-Workstation-ID", ws.ID)
-		request.Header.Set("X-Contain-WSLAN-Token", s.config.WorkerToken)
-		request.Header.Set("X-Contain-WSLAN-App", appID)
-	}
-	proxy.ModifyResponse = func(response *http.Response) error {
-		if explicitPrefix != "" {
-			if location := response.Header.Get("Location"); strings.HasPrefix(location, "/") &&
-				!strings.HasPrefix(location, explicitPrefix+"/") {
-				response.Header.Set("Location", explicitPrefix+location)
-			}
-		}
-		cookies := response.Header.Values("Set-Cookie")
-		response.Header.Del("Set-Cookie")
-		for _, cookie := range cookies {
-			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(cookie)), "wm_session=") {
-				response.Header.Add("Set-Cookie", cookie)
-			}
-		}
-		return nil
-	}
-	proxy.ErrorHandler = func(rw http.ResponseWriter, request *http.Request, err error) {
-		s.log.Warn("app proxy failed", "workstation_id", ws.ID, "app_id", appID, "error", err)
-		http.Error(rw, "application is unavailable", http.StatusBadGateway)
-	}
-	proxy.ServeHTTP(w, r)
-}
-
-func (s *Server) requireUser(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("wm_session")
-		if err != nil {
-			s.redirectLogin(w, r)
-			return
-		}
-		user, err := s.db.SessionUser(r.Context(), auth.TokenHash(cookie.Value))
-		if err != nil {
-			s.clearSession(w)
-			s.redirectLogin(w, r)
-			return
-		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead &&
-			r.Method != http.MethodOptions && !sameOrigin(r) {
-			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
-	})
-}
-
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return s.requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !currentUser(r).IsAdmin {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "administrator access required"})
-			return
-		}
-		next.ServeHTTP(w, r)
-	}))
-}
-
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64) error {
-	raw, hash, err := auth.RandomToken(32)
-	if err != nil {
-		return err
-	}
-	expires := time.Now().UTC().Add(s.config.SessionLifetime)
-	if err := s.db.CreateSession(r.Context(), userID, hash, expires); err != nil {
-		return err
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "wm_session", Value: raw, Path: "/", Expires: expires,
-		MaxAge: int(s.config.SessionLifetime.Seconds()), HttpOnly: true,
-		Secure: s.config.SecureCookies, SameSite: http.SameSiteLaxMode,
-	})
-	return nil
-}
-
-func (s *Server) clearSession(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name: "wm_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
-		Secure: s.config.SecureCookies, SameSite: http.SameSiteLaxMode,
-	})
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data pageData) {
@@ -1503,129 +304,12 @@ func (s *Server) rescan() error {
 	return nil
 }
 
-func (s *Server) Reconcile(ctx context.Context) error {
-	resources, err := s.worker.List(ctx)
-	if err != nil {
-		return err
-	}
-	byWorkstation := make(map[string][]workerapi.Resource)
-	for _, resource := range resources {
-		byWorkstation[resource.WorkstationID] = append(byWorkstation[resource.WorkstationID], resource)
-	}
-	records, err := s.db.AllActiveWorkstations(ctx)
-	if err != nil {
-		return err
-	}
-	for _, ws := range records {
-		items := byWorkstation[ws.ID]
-		if len(items) == 0 && ws.State != string(workstations.StateCreating) &&
-			ws.State != string(workstations.StatePullingImages) {
-			_ = s.db.SetWorkstationState(ctx, ws.ID, ws.State, string(workstations.StateError),
-				"Reconciliation found no managed Docker resources")
-		}
-		delete(byWorkstation, ws.ID)
-	}
-	for id := range byWorkstation {
-		s.log.Warn("orphaned managed resources detected; not deleting", "workstation_id", id)
-	}
-	return nil
-}
-
-func (s *Server) workstationHostname(hostport string) string {
-	return proxy.WorkstationHostname(hostport, s.config.PublicBaseDomain)
-}
-
-func (s *Server) redirectLogin(w http.ResponseWriter, r *http.Request) {
-	next := r.URL.RequestURI()
-	http.Redirect(w, r, "/login?next="+url.QueryEscape(next), http.StatusSeeOther)
-}
-
-func (s *Server) loginBlocked(ip string) time.Duration {
-	s.loginMu.Lock()
-	defer s.loginMu.Unlock()
-	attempt := s.logins[ip]
-	if attempt == nil {
-		return 0
-	}
-	return time.Until(attempt.Blocked)
-}
-
-func (s *Server) recordLogin(ip string, success bool) {
-	s.loginMu.Lock()
-	defer s.loginMu.Unlock()
-	if success {
-		delete(s.logins, ip)
-		return
-	}
-	attempt := s.logins[ip]
-	if attempt == nil {
-		attempt = &loginAttempt{}
-		s.logins[ip] = attempt
-	}
-	attempt.Failures++
-	attempt.LastSeen = time.Now()
-	if attempt.Failures >= 5 {
-		attempt.Blocked = time.Now().Add(time.Duration(attempt.Failures-4) * 30 * time.Second)
-	}
-	for key, value := range s.logins {
-		if time.Since(value.LastSeen) > 24*time.Hour {
-			delete(s.logins, key)
-		}
-	}
-}
-
-func currentUser(r *http.Request) database.User {
-	user, _ := r.Context().Value(userKey).(database.User)
-	return user
-}
-
-func currentUserPointer(r *http.Request) *database.User {
-	user, ok := r.Context().Value(userKey).(database.User)
-	if !ok {
+func parseOptionalID(value string) *int64 {
+	id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || id <= 0 {
 		return nil
 	}
-	return &user
-}
-
-func sameOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		origin = r.Header.Get("Referer")
-	}
-	if origin == "" {
-		// API clients authenticate with a host-only session cookie and are still
-		// constrained by SameSite=Lax.
-		return true
-	}
-	parsed, err := url.Parse(origin)
-	return err == nil && strings.EqualFold(parsed.Host, r.Host)
-}
-
-func safeNext(value string) string {
-	if value == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
-		return "/"
-	}
-	return value
-}
-
-func remoteIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
-}
-
-func workstationID() (string, error) {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-	data := make([]byte, 10)
-	if _, err := rand.Read(data); err != nil {
-		return "", err
-	}
-	for i := range data {
-		data[i] = alphabet[int(data[i])%len(alphabet)]
-	}
-	return "ws-" + string(data), nil
+	return &id
 }
 
 func unique(values []string) []string {

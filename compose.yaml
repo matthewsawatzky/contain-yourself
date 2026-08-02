@@ -23,6 +23,8 @@ services:
       TEMPLATES_DIRECTORY: /config/templates
       VPN_PROFILES_DIRECTORY: /data/vpn-profiles
       VPN_ENCRYPTION_KEY_FILE: /data/vpn-profiles.key
+      VPN_ENCRYPTION_KEY: ${VPN_ENCRYPTION_KEY:-}
+      DEFAULT_WORKSPACE_IMAGE: ${DEFAULT_WORKSPACE_IMAGE:-alpine:3.21}
       WORKER_URL: http://docker-worker:8090
       WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
       PUBLIC_BASE_DOMAIN: ${PUBLIC_BASE_DOMAIN:-}
@@ -57,7 +59,7 @@ services:
       WORKER_LISTEN: 0.0.0.0:8090
       WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
       MANAGEMENT_NETWORK: workstation-manager
-      WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
+      WORKER_ALLOWED_IMAGES: ${WORKER_ALLOWED_IMAGES:-alpine:3.21,tsl0922/ttyd:1.7.7,filebrowser/filebrowser:v2.32.0,codercom/code-server:4.99.4,lscr.io/linuxserver/chromium@sha256:92933242f71646b24d568cab82c8da1eb0838c067a281ad9dce74fe94e7d0fe1}
       WSLAN_IMAGE: ${WSLAN_IMAGE:-contain-yourself-wslan:dev}
       APP_APPROVALS_PATH: /data/app-approvals.json
       WORKSTATION_LOGS_DIRECTORY: /logs

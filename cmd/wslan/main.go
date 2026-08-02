@@ -39,7 +39,7 @@ func main() {
 		fatal(errors.New("WSLAN_TOKEN must contain at least 24 characters"))
 	}
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("WSLAN_MODE")))
-	if mode != "direct" && mode != "wireguard" {
+	if !supportedMode(mode) {
 		fatal(fmt.Errorf("unsupported WSLAN_MODE %q", mode))
 	}
 	apps, err := parseApps(os.Getenv("WSLAN_APPS"))
@@ -76,6 +76,21 @@ func main() {
 	fatal(server.ListenAndServe())
 }
 
+// supportedMode mirrors internal/egress. The gateway is a separate image that
+// can be a different build than the worker, so it validates the mode itself
+// rather than trusting whatever it was handed.
+func supportedMode(value string) bool {
+	switch value {
+	case "direct", "wireguard", "host-gateway", "ipv6":
+		return true
+	}
+	return false
+}
+
+// healthChecksTunnel reports whether the mode has a tunnel whose liveness
+// decides gateway health. Only WireGuard fails closed.
+func healthChecksTunnel(mode string) bool { return mode == "wireguard" }
+
 func parseApps(value string) (map[string]int, error) {
 	result := make(map[string]int)
 	for _, item := range strings.Split(value, ",") {
@@ -106,7 +121,7 @@ func validID(value string) bool {
 }
 
 func (g *gateway) health(w http.ResponseWriter, _ *http.Request) {
-	if g.mode == "wireguard" {
+	if healthChecksTunnel(g.mode) {
 		if err := exec.Command("wg", "show", "wg0").Run(); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"status": "unhealthy", "mode": g.mode, "error": "WireGuard interface is unavailable",

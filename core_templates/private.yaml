@@ -5,6 +5,7 @@ description: Persistent desktop and terminal forced through a selected WireGuard
 workspace_image: alpine:3.21
 apps: [web-desktop, terminal]
 vpn_required: true
+egress: wireguard
 persistent: true
 cpu: 2
 memory_mb: 4096

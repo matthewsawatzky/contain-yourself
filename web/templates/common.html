@@ -11,16 +11,30 @@
   <link rel="stylesheet" href="/static/share.css">
   <link rel="stylesheet" href="/static/telemetry.css">
   <link rel="stylesheet" href="/static/store.css">
+  <!-- Last: these :root custom properties must win over the static fallbacks
+       declared at the top of app.css, which have identical specificity. -->
+  <link rel="stylesheet" href="/theme.css{{if .Workstation.ID}}?workstation={{.Workstation.ID}}{{end}}">
 </head>
 <body>
 {{end}}
 {{define "nav"}}
-<header class="topbar">
-  <a class="brand" href="/"><span class="brand-mark">W</span><span>Workstation Manager</span></a>
+<aside class="sidebar">
+  <a class="brand" href="/"><span class="brand-mark">W</span><span class="brand-name">Workstation Manager</span></a>
   {{if .User}}
-  <nav><a class="link" href="/">Workstations</a><a class="link" href="/templates">Templates</a><a class="link" href="/app-store">App store</a><a class="link" href="/vpn-profiles">VPN profiles</a>{{if .User.IsAdmin}}<a class="link" href="/users">Users</a>{{end}}<span class="muted">{{.User.Username}}</span><form method="post" action="/logout"><button class="link">Log out</button></form></nav>
+  <nav class="side-nav">
+    <a href="/"{{if eq .Title "Dashboard"}} class="current"{{end}}><span class="nav-glyph">▤</span>Workstations</a>
+    <a href="/templates"{{if eq .Title "Templates"}} class="current"{{end}}><span class="nav-glyph">◫</span>Templates</a>
+    <a href="/app-store"{{if eq .Title "App store"}} class="current"{{end}}><span class="nav-glyph">◈</span>App store</a>
+    <a href="/vpn-profiles"{{if eq .Title "VPN profiles"}} class="current"{{end}}><span class="nav-glyph">⛨</span>VPN profiles</a>
+    <a href="/appearance"{{if eq .Title "Appearance"}} class="current"{{end}}><span class="nav-glyph">◐</span>Appearance</a>
+    {{if .User.IsAdmin}}<a href="/users"{{if eq .Title "Users"}} class="current"{{end}}><span class="nav-glyph">◍</span>Users</a>{{end}}
+  </nav>
+  <div class="side-foot">
+    <span class="side-user"><span class="avatar">{{slice .User.Username 0 1}}</span><span class="side-identity"><b>{{.User.Username}}</b>{{if .User.IsAdmin}}<small>Administrator</small>{{end}}</span></span>
+    <form method="post" action="/logout"><button class="link">Log out</button></form>
+  </div>
   {{end}}
-</header>
+</aside>
 {{end}}
 {{define "flash"}}{{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}{{if .Notice}}<div class="alert">{{.Notice}}</div>{{end}}{{end}}
 {{define "foot"}}

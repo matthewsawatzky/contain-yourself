@@ -68,7 +68,15 @@ type ProvisionRequest struct {
 	MemoryMB      int         `json:"memory_mb"`
 	CPU           float64     `json:"cpu"`
 	PIDLimit      int         `json:"pid_limit"`
-	Apps          []AppSpec   `json:"apps"`
+	// WorkspaceImage seeds the shared workspace volume once, on first
+	// creation. It is not a long-lived container: the worker runs it to
+	// completion and removes it. Empty leaves the workspace empty.
+	WorkspaceImage string `json:"workspace_image,omitempty"`
+	// EgressMode selects how the WSLAN gateway forwards traffic. Empty is
+	// treated as "derive from VPNRequired" for controllers older than the
+	// named modes.
+	EgressMode string    `json:"egress_mode,omitempty"`
+	Apps       []AppSpec `json:"apps"`
 }
 
 // VPNProfile carries one validated WireGuard profile over the authenticated

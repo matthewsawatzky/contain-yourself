@@ -1,0 +1,15 @@
+schema_version: 1
+id: custom-localdev
+name: Local dev
+description: Reaches host services
+workspace_image: alpine:3.21
+apps:
+    - terminal
+    - web-desktop
+vpn_required: false
+egress: host-gateway
+persistent: true
+cpu: 2
+memory_mb: 2048
+pid_limit: 256
+expires_hours: 0

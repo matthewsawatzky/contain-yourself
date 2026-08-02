@@ -192,3 +192,94 @@ Endpoint = 1.2.3.4:51820
 AllowedIPs = 0.0.0.0/0, ::/0
 `
 }
+
+func TestProvisionAcceptsAllowlistedWorkspaceImage(t *testing.T) {
+	service := testService()
+	service.config.AllowedImages["alpine:3.21"] = struct{}{}
+	request := validProvision()
+	request.WorkspaceImage = "alpine:3.21"
+	if err := service.validateProvision(request); err != nil {
+		t.Fatalf("allowlisted workspace image rejected: %v", err)
+	}
+}
+
+func TestProvisionRejectsUnapprovedOrUnpinnedWorkspaceImage(t *testing.T) {
+	service := testService()
+	unapproved := validProvision()
+	unapproved.WorkspaceImage = "debian:12-slim"
+	if service.validateProvision(unapproved) == nil {
+		t.Fatal("workspace image outside the allowlist was accepted")
+	}
+	// An unpinned image would let the seed contents change under the operator
+	// between two otherwise identical workstations.
+	service.config.AllowedImages["debian:latest"] = struct{}{}
+	unpinned := validProvision()
+	unpinned.WorkspaceImage = "debian:latest"
+	if service.validateProvision(unpinned) == nil {
+		t.Fatal("unpinned workspace image was accepted")
+	}
+}
+
+func TestProvisionAllowsEmptyWorkspaceImage(t *testing.T) {
+	service := testService()
+	request := validProvision()
+	request.WorkspaceImage = ""
+	if err := service.validateProvision(request); err != nil {
+		t.Fatalf("empty workspace image rejected: %v", err)
+	}
+}
+
+func TestProvisionAcceptsEveryEgressMode(t *testing.T) {
+	service := testService()
+	for _, mode := range []string{"direct", "host-gateway", "ipv6"} {
+		request := validProvision()
+		request.EgressMode = mode
+		if err := service.validateProvision(request); err != nil {
+			t.Errorf("egress %q rejected: %v", mode, err)
+		}
+	}
+}
+
+func TestProvisionRejectsAnUnknownEgressMode(t *testing.T) {
+	service := testService()
+	request := validProvision()
+	request.EgressMode = "tor"
+	if service.validateProvision(request) == nil {
+		t.Fatal("an unknown egress mode was accepted")
+	}
+}
+
+// A profile only makes sense for wireguard egress. Accepting one alongside a
+// direct mode would mean shipping a private key to a gateway that never uses
+// it.
+func TestOnlyWireGuardEgressMayCarryAVPNProfile(t *testing.T) {
+	service := testService()
+	stray := validProvision()
+	stray.EgressMode = "host-gateway"
+	stray.VPNProfile = &workerapi.VPNProfile{WireGuardConfig: "[Interface]"}
+	if service.validateProvision(stray) == nil {
+		t.Fatal("a non-VPN egress mode was allowed to carry a profile")
+	}
+
+	missing := validProvision()
+	missing.EgressMode = "wireguard"
+	missing.VPNRequired = true
+	if service.validateProvision(missing) == nil {
+		t.Fatal("wireguard egress was accepted with no profile")
+	}
+}
+
+// Controllers older than named modes send only vpn_required.
+func TestEmptyEgressModeFallsBackToTheLegacyFlag(t *testing.T) {
+	service := testService()
+	legacy := validProvision()
+	legacy.EgressMode = ""
+	legacy.VPNRequired = true
+	if service.validateProvision(legacy) == nil {
+		t.Fatal("legacy vpn_required did not require a profile")
+	}
+	legacy.VPNProfile = &workerapi.VPNProfile{WireGuardConfig: integrationWireGuardConfig(t)}
+	if err := service.validateProvision(legacy); err != nil {
+		t.Fatalf("legacy vpn_required with a profile was rejected: %v", err)
+	}
+}

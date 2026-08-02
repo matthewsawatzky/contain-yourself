@@ -5,6 +5,7 @@ description: Terminal, files, and code editor behind the configured VPN
 workspace_image: alpine:3.21
 apps: [web-desktop, terminal, files, code]
 vpn_required: true
+egress: wireguard
 persistent: true
 cpu: 2
 memory_mb: 4096

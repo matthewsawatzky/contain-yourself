@@ -5,6 +5,7 @@ description: Temporary hardened remote browser without mandatory VPN routing
 workspace_image: alpine:3.21
 apps: [web-desktop, files, browser]
 vpn_required: false
+egress: direct
 persistent: false
 cpu: 2
 memory_mb: 3072

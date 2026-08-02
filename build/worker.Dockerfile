@@ -7,6 +7,7 @@ ARG TARGETOS
 ARG TARGETARCH
 COPY cmd/worker ./cmd/worker
 COPY internal/config ./internal/config
+COPY internal/egress ./internal/egress
 COPY internal/dockerworker ./internal/dockerworker
 COPY internal/vpnprofiles ./internal/vpnprofiles
 COPY pkg ./pkg

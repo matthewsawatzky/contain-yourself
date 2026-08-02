@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       go build -trimpath -ldflags="-s -w" -o /out/wslan ./cmd/wslan
 
 FROM alpine:3.22.1
-RUN apk add --no-cache ca-certificates dnsmasq iproute2 iptables wireguard-tools \
+RUN apk add --no-cache ca-certificates dnsmasq iproute2 iptables ip6tables wireguard-tools \
  && mkdir -p /run/wslan
 COPY --from=build /out/wslan /usr/local/bin/wslan
 COPY build/wslan-entrypoint.sh /usr/local/bin/wslan-entrypoint

@@ -40,13 +40,63 @@ iptables -t nat -F POSTROUTING
 iptables -t mangle -F OUTPUT
 iptables -A INPUT -i "$internal_interface" -p tcp --dport 9000 -j DROP
 
+host_gateway=$(ip -o route show default | awk 'NR == 1 {print $3}')
+
+# drop_control_plane blocks the workstation from reaching the controller, the
+# worker, or any other workstation's gateway on the management network. Every
+# non-VPN mode calls it; wireguard does not need it because nothing is routed
+# out of the management interface at all.
+drop_control_plane() {
+  if [ -n "$management_cidr" ]; then
+    iptables -A FORWARD -i "$internal_interface" -d "$management_cidr" -j DROP
+  fi
+}
+
 dns_arguments="--resolv-file=/etc/resolv.conf"
 case "$WSLAN_MODE" in
   direct)
     output_interface=$external_interface
-    if [ -n "$management_cidr" ]; then
-      iptables -A FORWARD -i "$internal_interface" -d "$management_cidr" -j DROP
+    drop_control_plane
+    ;;
+  host-gateway)
+    output_interface=$external_interface
+    # Reach services listening on the Docker host, but nothing else on the
+    # management network. Order matters: this ACCEPT is appended before the
+    # DROP below, and iptables takes the first match.
+    if [ -n "$host_gateway" ]; then
+      iptables -A FORWARD -i "$internal_interface" -d "$host_gateway" -j ACCEPT
+    else
+      echo "host-gateway mode could not discover the host address" >&2
+      exit 1
     fi
+    drop_control_plane
+    ;;
+  ipv6)
+    output_interface=$external_interface
+    drop_control_plane
+    if [ ! -d /proc/sys/net/ipv6 ]; then
+      echo "ipv6 mode requires IPv6 on the Docker daemon (set ipv6 and fixed-cidr-v6 in daemon.json)" >&2
+      exit 1
+    fi
+    internal_cidr6=$(ip -o -6 route show dev "$internal_interface" 2>/dev/null |
+      awk '$1 ~ /\// && $1 !~ /^fe80/ {print $1; exit}')
+    if [ -z "$internal_cidr6" ]; then
+      echo "ipv6 mode found no IPv6 subnet on the workstation network" >&2
+      exit 1
+    fi
+    ip6tables -P FORWARD DROP
+    ip6tables -F FORWARD
+    ip6tables -t nat -F POSTROUTING 2>/dev/null || true
+    ip6tables -A INPUT -i "$internal_interface" -p tcp --dport 9000 -j DROP
+    management_cidr6=$(ip -o -6 route show dev "$external_interface" 2>/dev/null |
+      awk '$1 ~ /\// && $1 !~ /^fe80/ {print $1; exit}')
+    if [ -n "$management_cidr6" ]; then
+      ip6tables -A FORWARD -i "$internal_interface" -d "$management_cidr6" -j DROP
+    fi
+    ip6tables -A FORWARD -i "$internal_interface" -o "$external_interface" -j ACCEPT
+    ip6tables -A FORWARD -i "$external_interface" -o "$internal_interface" \
+      -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -t nat -A POSTROUTING -s "$internal_cidr6" -o "$external_interface" -j MASQUERADE
     ;;
   wireguard)
     config=/run/wslan/wg0.conf

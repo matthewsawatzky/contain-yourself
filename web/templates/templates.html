@@ -11,7 +11,7 @@
       <article class="panel template-card">
         <div class="section-head">
           <div><div class="eyebrow">{{if .Custom}}Custom template{{else}}Built in{{end}}</div><h2>{{.Name}}</h2></div>
-          <span class="status">{{if .VPNRequired}}VPN required{{else}}Direct network{{end}}</span>
+          <span class="status">{{egressLabel .Egress .VPNRequired}}</span>
         </div>
         <p class="muted">{{.Description}}</p>
         <div class="template-apps">{{range .Apps}}<span>{{.}}</span>{{end}}</div>
@@ -19,6 +19,7 @@
           <div><dt>Template ID</dt><dd><code>{{.ID}}</code></dd></div>
           <div><dt>Resources</dt><dd>{{.CPU}} CPU · {{.MemoryMB}} MB · {{.PIDLimit}} PIDs</dd></div>
           <div><dt>Storage</dt><dd>{{if .Persistent}}Persistent{{else}}Temporary{{end}}</dd></div>
+          <div><dt>Workspace image</dt><dd><code>{{.WorkspaceImage}}</code></dd></div>
         </dl>
         {{if and .Custom $.User.IsAdmin}}
         <form method="post" action="/templates/{{.ID}}/delete" data-confirm="Delete this custom template? Existing workstations are not affected.">
@@ -49,11 +50,17 @@
           <label>PID limit<input type="number" name="pid_limit" value="512" min="32" max="32768" required></label>
           <label>Expires (hours)<input type="number" name="expires_hours" value="0" min="0"></label>
         </div>
+        <label>Workspace image<input name="workspace_image" value="{{.DefaultWorkspaceImage}}" maxlength="200" placeholder="alpine:3.21"></label>
+        <label>Internet connection
+          <select name="egress" data-egress-select>
+            {{range .EgressModes}}<option value="{{.Value}}"{{if eq .Value "direct"}} selected{{end}} data-vpn="{{.RequiresProfile}}" data-description="{{.Description}}">{{.Label}}</option>{{end}}
+          </select>
+        </label>
+        <p class="fine" data-egress-description></p>
         <label class="check"><input type="checkbox" name="persistent" value="true" checked><span>Persistent workspace</span></label>
-        <label class="check"><input type="checkbox" name="vpn_required" value="true"><span>Require a WireGuard profile</span></label>
         <button class="primary">Save template</button>
       </form>
-      <p class="fine">Saving an existing custom ID updates that preset. Files remain visible in <code>config/templates/</code>.</p>
+      <p class="fine">The workspace image seeds <code>/workspace</code> once, from <code>/opt/workspace-seed</code> if the image has it. It must be pinned and on the worker's allowlist. Saving an existing custom ID updates that preset.</p>
     </aside>
     {{end}}
   </div>

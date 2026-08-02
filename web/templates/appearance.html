@@ -1,0 +1,45 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="page">
+  <div class="hero">
+    <div><div class="eyebrow">Appearance</div><h1>Accent colour</h1>
+      <p class="lead">Your accent applies across the controller. Individual workstations can override it, and apps running inside a workstation can read the palette to match.</p></div>
+  </div>
+  {{template "flash" .}}
+  <div class="dashboard-grid">
+    <section class="panel">
+      <h2>Choose a colour</h2>
+      <form method="post" action="/appearance" class="stack" data-accent-form>
+        <div class="swatches">
+          {{range .Presets}}<button type="button" class="swatch" data-accent-preset="{{.Value}}" title="{{.Name}}" aria-label="{{.Name}}" aria-pressed="false"></button>{{end}}
+        </div>
+        <label>Custom colour
+          <span class="color-row">
+            <input type="color" name="accent_color" value="{{.Theme.Accent}}" data-accent-input>
+            <span class="color-code" data-accent-code>{{.Theme.Accent}}</span>
+          </span>
+        </label>
+        <div class="actions">
+          <button class="primary" type="submit">Save accent</button>
+          <button class="button" type="submit" name="accent_color" value="default">Reset to default</button>
+        </div>
+        <p class="fine">Currently using the {{.Theme.Source}} colour. Text on accent-coloured buttons is chosen automatically for contrast.</p>
+      </form>
+    </section>
+    <aside class="panel sticky-panel">
+      <h2>Preview</h2>
+      <div class="theme-preview" data-accent-preview>
+        <div class="row"><button class="primary" type="button">Primary action</button><button class="button" type="button">Secondary</button></div>
+        <div class="row"><span class="status status-ready">ready</span><span class="status status-stopped">stopped</span></div>
+        <div class="row"><span class="app-glyph">T</span><span class="app-glyph">C</span><span class="app-glyph">B</span></div>
+      </div>
+      <dl>
+        <div><dt>Accent</dt><dd><code data-accent-code>{{.Theme.Accent}}</code></dd></div>
+        <div><dt>Text on accent</dt><dd><code>{{.Theme.OnAccent}}</code></dd></div>
+        <div><dt>Source</dt><dd>{{.Theme.Source}}</dd></div>
+      </dl>
+      <p class="fine">App UIs inside a workstation can fetch <code>/api/v1/theme</code> for this palette as JSON.</p>
+    </aside>
+  </div>
+</main>
+{{template "foot" .}}

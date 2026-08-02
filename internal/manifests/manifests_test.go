@@ -124,3 +124,42 @@ desktop:
 		t.Fatal("installed app overrode a core id")
 	}
 }
+
+func TestValidateAcceptsDesktopRolesOnMatchingRuntimes(t *testing.T) {
+	desktop := validManifest()
+	desktop.Desktop.Role = RoleDesktop
+	if err := Validate(desktop, ""); err != nil {
+		t.Fatalf("container-service desktop role rejected: %v", err)
+	}
+	launcher := Manifest{
+		SchemaVersion: 1, ID: "web-desktop", Name: "Desktop", Version: "1.0.0",
+		Runtime: Runtime{Type: "controller-ui"},
+		Desktop: Desktop{Visible: true, Role: RoleLauncher},
+	}
+	if err := Validate(launcher, ""); err != nil {
+		t.Fatalf("controller-ui launcher role rejected: %v", err)
+	}
+}
+
+func TestValidateRejectsMismatchedAndUnknownDesktopRoles(t *testing.T) {
+	// A launcher renders inside the controller; letting a container claim the
+	// role would put an untrusted app where the trusted launcher belongs.
+	container := validManifest()
+	container.Desktop.Role = RoleLauncher
+	if Validate(container, "") == nil {
+		t.Fatal("container-service was accepted as a launcher")
+	}
+	uiDesktop := Manifest{
+		SchemaVersion: 1, ID: "fake", Name: "Fake", Version: "1.0.0",
+		Runtime: Runtime{Type: "controller-ui"},
+		Desktop: Desktop{Role: RoleDesktop},
+	}
+	if Validate(uiDesktop, "") == nil {
+		t.Fatal("controller-ui was accepted as a desktop")
+	}
+	unknown := validManifest()
+	unknown.Desktop.Role = "kiosk"
+	if Validate(unknown, "") == nil {
+		t.Fatal("unknown desktop role was accepted")
+	}
+}

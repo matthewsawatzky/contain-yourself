@@ -77,10 +77,22 @@ type Permissions struct {
 type Desktop struct {
 	Visible       bool   `yaml:"visible" json:"visible"`
 	Icon          string `yaml:"icon" json:"icon"`
+	Role          string `yaml:"role" json:"role,omitempty"`
 	DefaultWidth  int    `yaml:"default_width" json:"default_width"`
 	DefaultHeight int    `yaml:"default_height" json:"default_height"`
 	Singleton     bool   `yaml:"singleton" json:"singleton"`
 }
+
+// Desktop roles let a deployment replace the bundled launcher or add a full
+// graphical desktop without the controller special-casing any app id.
+const (
+	// RoleLauncher renders the controller's own app launcher. It must be a
+	// controller-ui app, and it is never listed as a tile on itself.
+	RoleLauncher = "launcher"
+	// RoleDesktop is a container-service app that provides a full graphical
+	// desktop, such as a VNC or RDP session, in place of the launcher.
+	RoleDesktop = "desktop"
+)
 
 type Entry struct {
 	Manifest Manifest `json:"manifest"`
@@ -259,6 +271,19 @@ func Validate(m Manifest, packageDirectory string) error {
 	}
 	if m.Health.Type != "" && m.Health.Type != "http" && m.Health.Type != "tcp" {
 		return errors.New("health.type must be http or tcp")
+	}
+	switch m.Desktop.Role {
+	case "":
+	case RoleLauncher:
+		if m.Runtime.Type != "controller-ui" {
+			return errors.New("desktop.role launcher requires runtime.type controller-ui")
+		}
+	case RoleDesktop:
+		if m.Runtime.Type != "container-service" {
+			return errors.New("desktop.role desktop requires runtime.type container-service")
+		}
+	default:
+		return fmt.Errorf("desktop.role %q is not allowed", m.Desktop.Role)
 	}
 	if m.Desktop.Icon != "" {
 		icon := filepath.Clean(m.Desktop.Icon)

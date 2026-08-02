@@ -34,7 +34,7 @@ func TestWSLANGatewayIntegration(t *testing.T) {
 	defer engine.ContainerAction(context.Background(), appName, "delete")
 	defer engine.ContainerAction(context.Background(), probeName, "delete")
 
-	if err := engine.CreateNetwork(ctx, networkName, labels); err != nil {
+	if err := engine.CreateNetwork(ctx, networkName, labels, false); err != nil {
 		t.Fatal(err)
 	}
 	internal, err := engine.InspectNetwork(ctx, networkName)
@@ -146,7 +146,7 @@ func TestWSLANWireGuardConfigIntegration(t *testing.T) {
 	defer engine.ContainerAction(context.Background(), containerName, "delete")
 	defer engine.ContainerAction(context.Background(), probeName, "delete")
 
-	if err := engine.CreateNetwork(ctx, networkName, labels); err != nil {
+	if err := engine.CreateNetwork(ctx, networkName, labels, false); err != nil {
 		t.Fatal(err)
 	}
 	internal, err := engine.InspectNetwork(ctx, networkName)

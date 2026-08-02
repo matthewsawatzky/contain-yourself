@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"workstation-manager/internal/vpnprofiles"
 )
 
 type Controller struct {
@@ -20,8 +22,10 @@ type Controller struct {
 	AppStoreIndexURL       string
 	ControllerVersion      string
 	TemplatesDirectory     string
+	DefaultWorkspaceImage  string
 	VPNProfilesDirectory   string
 	VPNEncryptionKeyFile   string
+	VPNEncryptionKey       []byte
 	WorkerURL              string
 	WorkerToken            string
 	PublicBaseDomain       string
@@ -43,6 +47,7 @@ func LoadController() (Controller, error) {
 		AppStoreIndexURL:       env("APP_STORE_INDEX_URL", "https://raw.githubusercontent.com/matthewsawatzky/contain-yourself/main/app_store/index.json"),
 		ControllerVersion:      strings.TrimPrefix(env("CONTROLLER_VERSION", "0.4.1"), "v"),
 		TemplatesDirectory:     env("TEMPLATES_DIRECTORY", "/config/templates"),
+		DefaultWorkspaceImage:  env("DEFAULT_WORKSPACE_IMAGE", "alpine:3.21"),
 		VPNProfilesDirectory:   env("VPN_PROFILES_DIRECTORY", "/data/vpn-profiles"),
 		VPNEncryptionKeyFile:   env("VPN_ENCRYPTION_KEY_FILE", "/data/vpn-profiles.key"),
 		WorkerURL:              strings.TrimRight(env("WORKER_URL", "http://docker-worker:8090"), "/"),
@@ -54,6 +59,16 @@ func LoadController() (Controller, error) {
 		DefaultMemoryMB:        envInt("DEFAULT_MEMORY_MB", 4096),
 		DefaultPIDLimit:        envInt("DEFAULT_PID_LIMIT", 512),
 		ReconcileOnStartup:     envBool("RECONCILE_ON_STARTUP", true),
+	}
+	// An operator-supplied key means the controller never generates or stores
+	// one itself. Anything unparseable is fatal rather than a silent fallback
+	// to a generated key, which would leave existing profiles unreadable.
+	if raw := strings.TrimSpace(os.Getenv("VPN_ENCRYPTION_KEY")); raw != "" {
+		key, err := vpnprofiles.ParseKey(raw)
+		if err != nil {
+			return Controller{}, fmt.Errorf("VPN_ENCRYPTION_KEY: %w", err)
+		}
+		c.VPNEncryptionKey = key
 	}
 	if c.WorkerToken == "" {
 		return Controller{}, errors.New("WORKER_TOKEN is required")

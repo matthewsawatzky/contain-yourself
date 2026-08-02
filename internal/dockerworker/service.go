@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"workstation-manager/internal/config"
+	"workstation-manager/internal/egress"
 	"workstation-manager/internal/vpnprofiles"
 	"workstation-manager/pkg/workerapi"
 )
@@ -274,7 +275,13 @@ func (s *Service) validateProvision(request workerapi.ProvisionRequest) error {
 		request.MemoryMB > 131072 || request.PIDLimit < 32 || request.PIDLimit > 32768 {
 		return errors.New("workstation resource limits are outside the allowed range")
 	}
-	if request.VPNRequired {
+	mode := egress.Resolve(request.EgressMode, request.VPNRequired)
+	if request.EgressMode != "" {
+		if _, err := egress.Parse(request.EgressMode); err != nil {
+			return err
+		}
+	}
+	if mode.RequiresVPNProfile() {
 		if request.VPNProfile == nil {
 			return errors.New("VPN is required but no VPN profile was selected")
 		}
@@ -282,7 +289,15 @@ func (s *Service) validateProvision(request workerapi.ProvisionRequest) error {
 			return fmt.Errorf("invalid WireGuard profile: %w", err)
 		}
 	} else if request.VPNProfile != nil {
-		return errors.New("non-VPN workstation cannot select a VPN profile")
+		return errors.New("only a wireguard-egress workstation can carry a VPN profile")
+	}
+	if request.WorkspaceImage != "" {
+		if !pinnedImageReference(request.WorkspaceImage) {
+			return errors.New("workspace image is not pinned")
+		}
+		if _, allowed := s.config.AllowedImages[request.WorkspaceImage]; !allowed {
+			return fmt.Errorf("workspace image %q is not approved", request.WorkspaceImage)
+		}
 	}
 	ids := make(map[string]bool)
 	for _, app := range request.Apps {
@@ -377,6 +392,11 @@ func (s *Service) prepareImages(ctx context.Context, request workerapi.Provision
 	if err := s.engine.EnsureImage(ctx, s.config.WSLANImage); err != nil {
 		return fmt.Errorf("pull WSLAN system image: %w", err)
 	}
+	if request.WorkspaceImage != "" {
+		if err := s.engine.EnsureImage(ctx, request.WorkspaceImage); err != nil {
+			return fmt.Errorf("pull workspace image: %w", err)
+		}
+	}
 	for _, app := range request.Apps {
 		if err := s.engine.Pull(ctx, app.Image); err != nil {
 			return fmt.Errorf("pull app %s: %w", app.ID, err)
@@ -423,9 +443,13 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 	if err := s.engine.CreateVolume(ctx, workspaceVolume, labels); err != nil {
 		return fmt.Errorf("create workspace volume: %w", err)
 	}
+	if err := s.seedWorkspace(ctx, request, workspaceVolume); err != nil {
+		return fmt.Errorf("seed workspace: %w", err)
+	}
+	mode := egress.Resolve(request.EgressMode, request.VPNRequired)
 	wslanNetwork := name(request.WorkstationID, "wslan")
 	if err := s.engine.CreateNetwork(ctx, wslanNetwork,
-		baseLabels(request.WorkstationID, "network")); err != nil {
+		baseLabels(request.WorkstationID, "network"), mode.RequiresIPv6()); err != nil {
 		return fmt.Errorf("create WSLAN network: %w", err)
 	}
 	networkInfo, err := s.engine.InspectNetwork(ctx, wslanNetwork)
@@ -438,14 +462,10 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 	}
 	sort.Strings(appMappings)
 	gatewayName := name(request.WorkstationID, "wslan")
-	mode := "direct"
-	if request.VPNRequired {
-		mode = "wireguard"
-	}
 	gatewayConfig := ContainerConfig{
 		Name: gatewayName, Image: s.config.WSLANImage,
 		Environment: map[string]string{
-			"WSLAN_ROLE": "gateway", "WSLAN_MODE": mode,
+			"WSLAN_ROLE": "gateway", "WSLAN_MODE": string(mode),
 			"WSLAN_INTERNAL_CIDR": networkInfo.Subnet,
 			"WSLAN_TOKEN":         s.config.Token,
 			"WSLAN_APPS":          strings.Join(appMappings, ","),
@@ -455,7 +475,11 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		CapAdd: []string{"NET_ADMIN"}, Ports: []int{wslanIngressPort},
 		Sysctls: map[string]string{"net.ipv4.ip_forward": "1"},
 	}
-	if request.VPNRequired {
+	if mode.RequiresIPv6() {
+		gatewayConfig.Sysctls["net.ipv6.conf.all.forwarding"] = "1"
+		gatewayConfig.Sysctls["net.ipv6.conf.all.disable_ipv6"] = "0"
+	}
+	if mode.RequiresVPNProfile() {
 		gatewayConfig.Devices = []map[string]string{{
 			"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm",
 		}}
@@ -466,7 +490,7 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 	if err := s.engine.ConnectNetwork(ctx, wslanNetwork, gatewayName, []string{"wslan-gateway"}); err != nil {
 		return fmt.Errorf("connect WSLAN gateway: %w", err)
 	}
-	if request.VPNRequired {
+	if mode.RequiresVPNProfile() {
 		if err := s.engine.CopyFile(ctx, gatewayName, wireGuardSecretDirectory,
 			wireGuardSecretFilename, []byte(request.VPNProfile.WireGuardConfig), 0o600); err != nil {
 			return fmt.Errorf("inject WireGuard profile: %w", err)
@@ -556,6 +580,53 @@ func (s *Service) createResources(ctx context.Context, request workerapi.Provisi
 		}
 	}
 	return nil
+}
+
+// workspaceSeedDirectory is the conventional path a workspace image uses to
+// publish the files it wants copied into a new workspace. Images without it
+// still work: the seed run creates the marker and exits.
+const workspaceSeedDirectory = "/opt/workspace-seed"
+
+// workspaceSeedMarker records that a workspace volume has already been seeded.
+// Seeding is deliberately once-per-volume so that a workstation update or
+// rebuild never overwrites files the user has since changed.
+const workspaceSeedMarker = "/workspace/.workstation-seeded"
+
+// seedWorkspace populates a freshly created workspace volume from the template's
+// workspace image. The seed container runs to completion and is removed; it is
+// not part of the workstation's running resource set.
+func (s *Service) seedWorkspace(ctx context.Context, request workerapi.ProvisionRequest,
+	workspaceVolume string) error {
+	if request.WorkspaceImage == "" {
+		return nil
+	}
+	seedName := name(request.WorkstationID, "seed-workspace")
+	// Delete any container left behind by an interrupted earlier attempt so the
+	// run below is not silently skipped by the name-conflict reuse path.
+	if err := s.engine.ContainerAction(ctx, seedName, "delete"); err != nil {
+		return err
+	}
+	script := fmt.Sprintf(
+		"set -e; if [ -e %[1]s ]; then exit 0; fi; "+
+			"if [ -d %[2]s ]; then cp -a %[2]s/. /workspace/; fi; "+
+			"touch %[1]s", workspaceSeedMarker, workspaceSeedDirectory)
+	if err := s.engine.CreateContainer(ctx, ContainerConfig{
+		Name: seedName, Image: request.WorkspaceImage,
+		Entrypoint: []string{"/bin/sh"}, Command: []string{"-c", script},
+		User: "0:0", Labels: baseLabels(request.WorkstationID, "seed"),
+		NetworkMode: "none", MemoryBytes: 512 * 1024 * 1024,
+		NanoCPUs: 1_000_000_000, PIDLimit: 128,
+		Mounts: []Mount{{Source: workspaceVolume, Target: "/workspace"}},
+	}); err != nil {
+		return err
+	}
+	if err := s.engine.ContainerAction(ctx, seedName, "start"); err != nil {
+		return err
+	}
+	if err := s.engine.WaitContainer(ctx, seedName); err != nil {
+		return err
+	}
+	return s.engine.ContainerAction(ctx, seedName, "delete")
 }
 
 func (s *Service) initializeStorage(ctx context.Context, workstationID string,

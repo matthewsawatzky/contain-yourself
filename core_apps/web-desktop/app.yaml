@@ -15,6 +15,7 @@ resources:
 desktop:
   visible: true
   icon: icon.svg
+  role: launcher
   default_width: 1200
   default_height: 760
   singleton: true

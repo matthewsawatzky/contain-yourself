@@ -13,9 +13,9 @@
       <div class="section-head"><div><div class="eyebrow">Workspace</div><h2>Applications</h2></div></div>
       <div class="app-grid">
       {{range .Workstation.Apps}}
-        <a class="app-tile" href="{{if eq .AppID "web-desktop"}}/workstations/{{$.Workstation.ID}}/desktop{{else}}/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/{{end}}">
-          <span class="app-glyph">{{slice .AppID 0 1}}</span>
-          <span><b>{{.AppID}}</b><small>{{.State}} · port {{.InternalPort}}</small></span>
+        <a class="app-tile" href="{{if eq (appRole .AppID) "launcher"}}/workstations/{{$.Workstation.ID}}/desktop{{else}}/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/{{end}}">
+          <span class="app-glyph">{{slice (appName .AppID) 0 1}}</span>
+          <span><b>{{appName .AppID}}</b><small>{{.State}}{{if .InternalPort}} · port {{.InternalPort}}{{end}}</small></span>
         </a>
       {{end}}
       </div>
@@ -34,6 +34,21 @@
         <div><dt>Persistence</dt><dd>{{if .Workstation.Persistent}}Persistent{{else}}Temporary{{end}}</dd></div>
         <div><dt>Resources</dt><dd>{{.Workstation.CPULimit}} CPU / {{.Workstation.MemoryLimitMB}} MB</dd></div>
       </dl>
+      <div class="eyebrow">Appearance</div><h2>Accent</h2>
+      <form method="post" action="/workstations/{{.Workstation.ID}}/accent" class="stack" data-accent-form>
+        <div class="swatches">
+          {{range .Presets}}<button type="button" class="swatch" data-accent-preset="{{.Value}}" title="{{.Name}}" aria-label="{{.Name}}" aria-pressed="false"></button>{{end}}
+        </div>
+        <span class="color-row">
+          <input type="color" name="accent_color" value="{{.Theme.Accent}}" data-accent-input aria-label="Workstation accent colour">
+          <span class="color-code" data-accent-code>{{.Theme.Accent}}</span>
+        </span>
+        <div class="actions">
+          <button class="primary" type="submit">Save</button>
+          <button type="submit" name="accent_color" value="default">Clear</button>
+        </div>
+        <p class="fine">Overrides your accent for this workstation only. Apps inside it can read the palette from <code>/api/v1/theme</code>.</p>
+      </form>
     </aside>
   </div>
   <section class="panel telemetry">
@@ -49,7 +64,7 @@
       </div>{{else}}<p class="muted">No running Docker resources to sample.</p>{{end}}
     </div>
     <div class="log-list">
-      {{range .Workstation.Apps}}{{if ne .AppID "web-desktop"}}<details data-log-url="/api/v1/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/logs?tail=200"><summary>{{.AppID}} logs</summary><pre>Open to load recent logs.</pre></details>{{end}}{{end}}
+      {{range .Workstation.Apps}}{{if ne (appRole .AppID) "launcher"}}<details data-log-url="/api/v1/workstations/{{$.Workstation.ID}}/apps/{{.AppID}}/logs?tail=200"><summary>{{appName .AppID}} logs</summary><pre>Open to load recent logs.</pre></details>{{end}}{{end}}
     </div>
     <p class="fine">Persistent app and network logs: <code>data/workstation-logs/{{.Workstation.ID}}/</code></p>
   </section>

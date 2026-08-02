@@ -100,17 +100,22 @@ front, then set `SECURE_COOKIES=true`.
   sessions, session revocation and login rate limiting
 - server-rendered dashboard, app launcher, lifecycle controls and live state
   refresh
+- per-user accent colour with per-workstation override, contrast-checked
+  foregrounds, and a palette endpoint that app UIs can theme against
 - strict app manifests and templates with unsafe-field rejection
 - pull-request-friendly app-store packages, schemas, deterministic integrity
   metadata, and a generated compact catalogue
 - deterministic, labelled Docker resources and an image allowlist
 - per-workstation WSLAN with isolated app namespaces, stable service DNS,
-  direct or fail-closed WireGuard egress, and authenticated ingress
-- encrypted WireGuard profiles with global and per-user private catalogues
+  selectable egress (direct, fail-closed WireGuard, host-gateway, IPv6), and
+  authenticated ingress
+- encrypted WireGuard profiles with global and per-user private catalogues,
+  operator-supplied keys, and offline key rotation
 - administrator-created user accounts and global profiles visible to new users
 - core desktop and terminal definitions plus installable Browser, Code, and
   Files packages
-- editable UI-managed template presets that can select any installed app
+- editable UI-managed template presets that can select any installed app,
+  choose an egress mode, and seed the workspace from a chosen image
 - bounded persistent app and WSLAN logs under `data/workstation-logs/`
 - authenticated HTTP and WebSocket reverse proxy
 - expiring, use-limited workstation share links with revocation and scoped
@@ -149,8 +154,11 @@ workstationctl reconcile
 - [Contributing an app](app_store/docs/contributing.md)
 - [Template format](docs/template-format.md)
 - [Controller UI design system](docs/ui-design-system.md)
+- [Theming and accent colours](docs/theming.md)
 - [Networking and reverse proxies](docs/networking.md)
+- [Egress modes](docs/egress.md)
 - [VPN profiles and multi-user access](docs/vpn-profiles.md)
+- [VPN profile encryption key](docs/vpn-encryption-key.md)
 - [Authentication](docs/authentication.md)
 - [Worker API](docs/worker-api.md)
 - [Security model](docs/security-model.md)

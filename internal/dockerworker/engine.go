@@ -199,10 +199,11 @@ type NetworkInfo struct {
 	Containers map[string]string
 }
 
-func (e *Engine) CreateNetwork(ctx context.Context, name string, labels map[string]string) error {
+func (e *Engine) CreateNetwork(ctx context.Context, name string,
+	labels map[string]string, enableIPv6 bool) error {
 	body := map[string]any{
 		"Name": name, "Driver": "bridge", "Internal": true, "Attachable": false,
-		"CheckDuplicate": true, "EnableIPv6": false, "Labels": labels,
+		"CheckDuplicate": true, "EnableIPv6": enableIPv6, "Labels": labels,
 	}
 	response, err := e.request(ctx, http.MethodPost, "/networks/create", body)
 	if err != nil {

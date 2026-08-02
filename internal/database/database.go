@@ -23,10 +23,11 @@ type DB struct {
 }
 
 type User struct {
-	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
-	IsAdmin   bool      `json:"is_admin"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	Username    string    `json:"username"`
+	IsAdmin     bool      `json:"is_admin"`
+	AccentColor string    `json:"accent_color,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Workstation struct {
@@ -43,6 +44,8 @@ type Workstation struct {
 	Persistent     bool             `json:"persistent"`
 	VPNRequired    bool             `json:"vpn_required"`
 	VPNProfileID   *int64           `json:"vpn_profile_id,omitempty"`
+	EgressMode     string           `json:"egress_mode,omitempty"`
+	AccentColor    string           `json:"accent_color,omitempty"`
 	ExitIP         string           `json:"exit_ip,omitempty"`
 	CreatedAt      time.Time        `json:"created_at"`
 	UpdatedAt      time.Time        `json:"updated_at"`
@@ -242,8 +245,8 @@ func (db *DB) Authenticate(ctx context.Context, username string) (User, string, 
 	var user User
 	var passwordHash string
 	err := db.sql.QueryRowContext(ctx,
-		"SELECT id, username, password_hash, is_admin FROM users WHERE username = ?",
-		username).Scan(&user.ID, &user.Username, &passwordHash, &user.IsAdmin)
+		"SELECT id, username, password_hash, is_admin, accent_color FROM users WHERE username = ?",
+		username).Scan(&user.ID, &user.Username, &passwordHash, &user.IsAdmin, &user.AccentColor)
 	return user, passwordHash, err
 }
 
@@ -262,7 +265,7 @@ func (db *DB) CreateUser(ctx context.Context, username, passwordHash string, isA
 
 func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := db.sql.QueryContext(ctx,
-		"SELECT id, username, is_admin, created_at FROM users ORDER BY username")
+		"SELECT id, username, is_admin, accent_color, created_at FROM users ORDER BY username")
 	if err != nil {
 		return nil, err
 	}
@@ -271,13 +274,46 @@ func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var user User
 		var created string
-		if err := rows.Scan(&user.ID, &user.Username, &user.IsAdmin, &created); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.IsAdmin,
+			&user.AccentColor, &created); err != nil {
 			return nil, err
 		}
 		user.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 		users = append(users, user)
 	}
 	return users, rows.Err()
+}
+
+// SetUserAccent stores a user's preferred accent colour. An empty value
+// restores the deployment default.
+func (db *DB) SetUserAccent(ctx context.Context, userID int64, accent string) error {
+	_, err := db.sql.ExecContext(ctx,
+		"UPDATE users SET accent_color = ? WHERE id = ?", accent, userID)
+	return err
+}
+
+// SetWorkstationAccent stores a per-workstation accent override, scoped to a
+// workstation the caller can already reach. An empty value clears the override
+// so the workstation follows its viewer's colour again.
+func (db *DB) SetWorkstationAccent(ctx context.Context, id string, user User, accent string) error {
+	query := "UPDATE workstations SET accent_color = ?, updated_at = ? WHERE id = ?"
+	args := []any{accent, now(), id}
+	if !user.IsAdmin {
+		query += " AND owner_user_id = ?"
+		args = append(args, user.ID)
+	}
+	result, err := db.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("workstation not found")
+	}
+	return nil
 }
 
 func (db *DB) CreateSession(ctx context.Context, userID int64, tokenHash string, expires time.Time) error {
@@ -289,10 +325,10 @@ func (db *DB) CreateSession(ctx context.Context, userID int64, tokenHash string,
 
 func (db *DB) SessionUser(ctx context.Context, tokenHash string) (User, error) {
 	var user User
-	err := db.sql.QueryRowContext(ctx, `SELECT u.id, u.username, u.is_admin
+	err := db.sql.QueryRowContext(ctx, `SELECT u.id, u.username, u.is_admin, u.accent_color
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`,
-		tokenHash, now()).Scan(&user.ID, &user.Username, &user.IsAdmin)
+		tokenHash, now()).Scan(&user.ID, &user.Username, &user.IsAdmin, &user.AccentColor)
 	if err == nil {
 		_, _ = db.sql.ExecContext(ctx, "UPDATE sessions SET last_used_at = ? WHERE token_hash = ?", now(), tokenHash)
 	}
@@ -763,8 +799,8 @@ func (db *DB) AllActiveWorkstations(ctx context.Context) ([]Workstation, error) 
 
 const workstationSelect = `SELECT id, name, owner_user_id, template_id, workspace_image,
 	state, hostname, cpu_limit, memory_limit_mb, pid_limit, persistent, vpn_required,
-	vpn_profile_id, exit_ip, created_at, updated_at, COALESCE(last_started_at, ''),
-	error_message FROM workstations`
+	vpn_profile_id, egress_mode, accent_color, exit_ip, created_at, updated_at,
+	COALESCE(last_started_at, ''), error_message FROM workstations`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -776,8 +812,8 @@ func scanWorkstation(row scanner) (Workstation, error) {
 	var vpnProfileID sql.NullInt64
 	err := row.Scan(&ws.ID, &ws.Name, &ws.OwnerUserID, &ws.TemplateID, &ws.WorkspaceImage,
 		&ws.State, &ws.Hostname, &ws.CPULimit, &ws.MemoryLimitMB, &ws.PIDLimit,
-		&ws.Persistent, &ws.VPNRequired, &vpnProfileID, &ws.ExitIP, &created, &updated,
-		&lastStarted, &ws.ErrorMessage)
+		&ws.Persistent, &ws.VPNRequired, &vpnProfileID, &ws.EgressMode, &ws.AccentColor,
+		&ws.ExitIP, &created, &updated, &lastStarted, &ws.ErrorMessage)
 	if err != nil {
 		return Workstation{}, err
 	}

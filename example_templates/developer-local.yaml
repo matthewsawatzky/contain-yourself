@@ -5,6 +5,7 @@ description: Persistent terminal, files, and code editor without mandatory VPN r
 workspace_image: alpine:3.21
 apps: [web-desktop, terminal, files, code]
 vpn_required: false
+egress: direct
 persistent: true
 cpu: 2
 memory_mb: 4096

@@ -5,6 +5,7 @@ description: Temporary remote browser forced through the configured VPN
 workspace_image: alpine:3.21
 apps: [web-desktop, files, browser]
 vpn_required: true
+egress: wireguard
 persistent: false
 cpu: 2
 memory_mb: 3072

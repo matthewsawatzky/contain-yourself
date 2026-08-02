@@ -7,15 +7,18 @@ ARG TARGETOS
 ARG TARGETARCH
 COPY cmd/controller ./cmd/controller
 COPY cmd/workstationctl ./cmd/workstationctl
+COPY cmd/vpnkeyctl ./cmd/vpnkeyctl
 COPY internal/appstore ./internal/appstore
 COPY internal/auth ./internal/auth
 COPY internal/config ./internal/config
+COPY internal/egress ./internal/egress
 COPY internal/database ./internal/database
 COPY internal/httpapi ./internal/httpapi
 COPY internal/manifests ./internal/manifests
 COPY internal/proxy ./internal/proxy
 COPY internal/sharing ./internal/sharing
 COPY internal/templates ./internal/templates
+COPY internal/theme ./internal/theme
 COPY internal/vpnprofiles ./internal/vpnprofiles
 COPY internal/workerclient ./internal/workerclient
 COPY internal/workstations ./internal/workstations
@@ -27,7 +30,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
       go build -trimpath -ldflags="-s -w" -o /out/controller ./cmd/controller \
  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-      go build -trimpath -ldflags="-s -w" -o /out/workstationctl ./cmd/workstationctl
+      go build -trimpath -ldflags="-s -w" -o /out/workstationctl ./cmd/workstationctl \
+ && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+      go build -trimpath -ldflags="-s -w" -o /out/vpnkeyctl ./cmd/vpnkeyctl
 
 FROM alpine:3.22.1
 RUN apk add --no-cache ca-certificates tzdata \
@@ -37,6 +42,7 @@ RUN apk add --no-cache ca-certificates tzdata \
  && chown -R workstation:workstation /data
 COPY --from=build /out/controller /usr/local/bin/controller
 COPY --from=build /out/workstationctl /usr/local/bin/workstationctl
+COPY --from=build /out/vpnkeyctl /usr/local/bin/vpnkeyctl
 USER workstation
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/controller"]

@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"workstation-manager/internal/egress"
 )
 
 type Template struct {
@@ -23,6 +25,7 @@ type Template struct {
 	WorkspaceImage string   `yaml:"workspace_image" json:"workspace_image"`
 	Apps           []string `yaml:"apps" json:"apps"`
 	VPNRequired    bool     `yaml:"vpn_required" json:"vpn_required"`
+	Egress         string   `yaml:"egress" json:"egress,omitempty"`
 	Persistent     bool     `yaml:"persistent" json:"persistent"`
 	CPU            float64  `yaml:"cpu" json:"cpu"`
 	MemoryMB       int      `yaml:"memory_mb" json:"memory_mb"`
@@ -134,6 +137,20 @@ func Validate(t Template, appExists func(string) bool) error {
 	}
 	if t.ExpiresHours < 0 {
 		return errors.New("expires_hours cannot be negative")
+	}
+	// egress and vpn_required describe the same thing from two angles. Rather
+	// than silently letting one win, reject a template whose pair disagrees so
+	// the author sees the contradiction.
+	if t.Egress != "" {
+		mode, err := egress.Parse(t.Egress)
+		if err != nil {
+			return err
+		}
+		if mode.RequiresVPNProfile() != t.VPNRequired {
+			return fmt.Errorf(
+				"egress %q and vpn_required %v disagree; wireguard requires vpn_required: true",
+				t.Egress, t.VPNRequired)
+		}
 	}
 	if len(t.Apps) == 0 {
 		return errors.New("at least one default app is required")

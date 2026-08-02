@@ -15,6 +15,8 @@ var ordered = []string{
 	"003_access_grants.sql",
 	"004_vpn_profiles.sql",
 	"005_multiuser_wireguard_profiles.sql",
+	"006_accent_theme.sql",
+	"007_egress_mode.sql",
 }
 
 // All returns migrations in version order.
