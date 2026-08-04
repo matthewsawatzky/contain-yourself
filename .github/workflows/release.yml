@@ -41,6 +41,8 @@ jobs:
             dockerfile: build/worker.Dockerfile
           - component: wslan
             dockerfile: build/wslan.Dockerfile
+          - component: files
+            dockerfile: build/files.Dockerfile
     steps:
       - uses: actions/checkout@v6
       - name: Resolve image name

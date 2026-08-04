@@ -68,14 +68,14 @@
     {
       "id": "files",
       "name": "Files",
-      "version": "1.1.0",
-      "summary": "Browse and manage files in the shared workspace",
+      "version": "2.0.0",
+      "summary": "Browse the workspace, upload and download, preview images and video",
       "categories": [
         "files",
         "utilities"
       ],
       "icon": "apps/files/icon.svg",
-      "image": "filebrowser/filebrowser:v2.32.0",
+      "image": "ghcr.io/matthewsawatzky/contain-yourself-files:v0.6.0",
       "compatibility": {
         "minimum_controller_version": "0.2.0",
         "platforms": [
@@ -86,15 +86,14 @@
       "permissions": {
         "network": "workstation-vpn",
         "storage": [
-          "app-data",
           "workspace"
         ],
         "capabilities": []
       },
       "bundle": {
         "path": "apps/files/bundle.json",
-        "sha256": "b7ecb86a09391429ad0ab3f6d8d528a79eb86879e5bceff024fe7b7a3a74bb52",
-        "size_bytes": 1592
+        "sha256": "8873ee8c0a6758a14281ad220ee772167f1057bde732f88887f30fd37a2dae72",
+        "size_bytes": 1779
       }
     }
   ]

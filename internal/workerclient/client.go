@@ -76,6 +76,13 @@ func (c *Client) Usage(ctx context.Context, id string) (workerapi.UsageResponse,
 	return usage, err
 }
 
+// Egress reports how a workstation's traffic is actually leaving.
+func (c *Client) Egress(ctx context.Context, id string) (workerapi.EgressStatus, error) {
+	var status workerapi.EgressStatus
+	err := c.do(ctx, http.MethodGet, "/v1/workstations/"+id+"/egress", nil, &status)
+	return status, err
+}
+
 func (c *Client) Logs(ctx context.Context, id, appID string, tail int) (workerapi.LogResponse, error) {
 	var logs workerapi.LogResponse
 	err := c.do(ctx, http.MethodGet, fmt.Sprintf(

@@ -266,4 +266,4 @@ fi
 printf '\nPrepared Contain Yourself %s in %s\n' "$version" "$project_directory"
 printf 'No containers were started. Start them when ready with:\n\n'
 printf '  docker compose up -d\n\n'
-printf 'Then open http://127.0.0.1:8080\n'
+printf 'Then open http://127.0.0.1:7080\n'

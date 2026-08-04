@@ -34,6 +34,22 @@
         <div><dt>Persistence</dt><dd>{{if .Workstation.Persistent}}Persistent{{else}}Temporary{{end}}</dd></div>
         <div><dt>Resources</dt><dd>{{.Workstation.CPULimit}} CPU / {{.Workstation.MemoryLimitMB}} MB</dd></div>
       </dl>
+      <div class="eyebrow">Connection</div><h2>Egress</h2>
+      <div class="egress">
+        <div class="egress-row"><span>Mode</span><b>{{.EgressLabel}}</b></div>
+        {{if .Egress.Error}}
+        <div class="egress-row"><span>State</span><b class="bad">Unavailable</b></div>
+        <p class="fine">{{.Egress.Error}}</p>
+        {{else if .Egress.Tunnel}}
+        <div class="egress-row"><span>Tunnel</span>{{if .Egress.Tunnel.Up}}<b class="good">Up</b>{{else}}<b class="bad">Down</b>{{end}}</div>
+        <div class="egress-row"><span>Last handshake</span><b>{{handshakeAge .Egress.Tunnel.HandshakeAgeSeconds}}</b></div>
+        {{if .Egress.Tunnel.Endpoint}}<div class="egress-row"><span>Exit</span><b><code>{{.Egress.Tunnel.Endpoint}}</code></b></div>{{end}}
+        <div class="egress-row"><span>Transferred</span><b>{{bytesHuman .Egress.Tunnel.ReceivedBytes}} in · {{bytesHuman .Egress.Tunnel.SentBytes}} out</b></div>
+        {{else}}
+        <div class="egress-row"><span>State</span>{{if .Egress.Healthy}}<b class="good">Active</b>{{else}}<b class="bad">Unavailable</b>{{end}}</div>
+        {{end}}
+        <p class="fine">{{if .Egress.FailsClosed}}Fails closed: if the tunnel drops, nothing leaves.{{else}}Traffic leaves using the host's connection.{{end}} By configuration, the controller and worker are unreachable from this workstation in every mode. Read from the gateway's own state; nothing is sent to an outside service to determine it.</p>
+      </div>
       <div class="eyebrow">Appearance</div><h2>Accent</h2>
       <form method="post" action="/workstations/{{.Workstation.ID}}/accent" class="stack" data-accent-form>
         <div class="swatches">

@@ -79,7 +79,7 @@ if [ "$apply_update" = true ]; then
   cd "$project_directory"
   docker compose pull
   docker compose up -d
-  printf 'Update applied. Open http://127.0.0.1:8080\n'
+  printf 'Update applied. Open http://127.0.0.1:7080\n'
 else
   printf 'No containers were changed. Apply the update when ready:\n\n'
   printf '  cd "%s"\n' "$project_directory"

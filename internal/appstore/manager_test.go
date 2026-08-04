@@ -150,7 +150,7 @@ description: Sample application
 runtime:
   type: container-service
   image: example/sample:`+version+`
-  internal_port: 8080
+  internal_port: 7080
 routing:
   base_path: /apps/sample/
   strip_prefix: true

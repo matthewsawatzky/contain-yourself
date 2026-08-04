@@ -56,7 +56,7 @@ func TestResolveIgnoresInvalidStoredValues(t *testing.T) {
 // Primary buttons paint text in --on-accent over --accent. Whatever colour the
 // user picks, that pairing has to stay readable.
 func TestOnAccentKeepsReadableContrast(t *testing.T) {
-	for _, accent := range append([]string{"#ffffff", "#000000", "#808080"},
+	for _, accent := range append([]string{"#ffffff", "#000000", "#708080"},
 		presetValues()...) {
 		palette := Resolve("", accent)
 		r, g, b := parse(palette.Accent)

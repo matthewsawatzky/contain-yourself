@@ -1,0 +1,16 @@
+schema_version: 1
+id: custom-browser
+name: browser
+description: ""
+workspace_image: alpine:3.21
+apps:
+    - browser
+    - terminal
+    - web-desktop
+vpn_required: true
+egress: wireguard
+persistent: true
+cpu: 2
+memory_mb: 4096
+pid_limit: 512
+expires_hours: 0

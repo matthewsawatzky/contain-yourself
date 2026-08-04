@@ -22,7 +22,7 @@ description: Sample application
 runtime:
   type: container-service
   image: example/sample:1.2.3
-  internal_port: 8080
+  internal_port: 7080
 routing:
   base_path: /apps/sample/
   strip_prefix: true
@@ -117,7 +117,7 @@ description: Sample application
 runtime:
   type: container-service
   image: example/sample:1.0.0
-  internal_port: 8080
+  internal_port: 7080
 routing:
   base_path: /apps/sample/
 network:

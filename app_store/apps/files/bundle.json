@@ -2,9 +2,9 @@
   "schema_version": 1,
   "id": "files",
   "name": "Files",
-  "version": "1.1.0",
-  "summary": "Browse and manage files in the shared workspace",
-  "description": "A lightweight file manager scoped to the workstation volume, routed through the controller without publishing a container port.",
+  "version": "2.0.0",
+  "summary": "Browse the workspace, upload and download, preview images and video",
+  "description": "A small purpose-built file browser for the workstation volume. Paths are confined with os.Root so a request cannot escape the workspace even through a symlink, and only images, video, audio, and plain text are served inline; everything else downloads, so workspace content cannot execute against the controller origin.",
   "categories": [
     "files",
     "utilities"
@@ -17,7 +17,7 @@
   ],
   "license": {
     "catalog": "MIT",
-    "upstream": "See the File Browser project"
+    "upstream": "MIT"
   },
   "links": {
     "homepage": "https://filebrowser.org/",
@@ -34,18 +34,18 @@
   "icon": "icon.svg",
   "screenshots": [],
   "package": {
-    "payload_sha256": "48761940c3c4a5a623b587e8b30c6d0d08b4ab1ddf097e975d928c16ebbc5ccf",
-    "payload_size_bytes": 1228,
+    "payload_sha256": "c16c3ed1607f63fd8c91b9d39cb1130276adc650059d725141a636ef56d1ae8e",
+    "payload_size_bytes": 2178,
     "files": [
       {
         "path": "README.md",
-        "sha256": "0b8b698e7dc910710c21a6d59f13d77ee05ea2489df096a3d525a3ec147b259a",
-        "size_bytes": 269
+        "sha256": "62d23b9269ec8e8844e85f41c5f48d043679dc165da57eec13a0dc4866bbe181",
+        "size_bytes": 1302
       },
       {
         "path": "app.yaml",
-        "sha256": "846f703f03322ad7abbd1bf3acd204915d90d31208c1c128f28f068c887d46b5",
-        "size_bytes": 787
+        "sha256": "dd2819021f7f9e084475692d9c2c179a0129fc6242b8daa6366d5febf18fc411",
+        "size_bytes": 704
       },
       {
         "path": "icon.svg",

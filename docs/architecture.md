@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-  U["User browser"] -->|"HTTP / WebSocket"| C["Controller :8080"]
+  U["User browser"] -->|"HTTP / WebSocket"| C["Controller :7080"]
   RP["Optional reverse proxy"] --> C
   C --> DB[("SQLite /data/controller.db")]
   C --> VP[("Encrypted WireGuard profiles /data/vpn-profiles")]
@@ -82,7 +82,7 @@ For controller-path access:
 ```
 
 For wildcard DNS, set `PUBLIC_BASE_DOMAIN=workstations.example.com` and forward
-both the controller name and `*.workstations.example.com` to port 8080:
+both the controller name and `*.workstations.example.com` to port 7080:
 
 ```text
 ws-abc123def4.workstations.example.com/apps/terminal/

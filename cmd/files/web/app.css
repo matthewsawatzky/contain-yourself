@@ -1,0 +1,155 @@
+/* Neutral surfaces and hairline seams, matching the controller. The accent is
+   fetched at runtime from the controller's theme endpoint, so this app follows
+   whatever colour the workstation is set to. */
+:root {
+  --bg: #121212;
+  --panel: #181818;
+  --panel-soft: #0e0e0e;
+  --line: rgba(148, 148, 158, .12);
+  --line-strong: rgba(148, 148, 158, .2);
+  --text: #fafafa;
+  --muted: #9b9ba4;
+  --accent: #ff6b00;
+  --on-accent: #0a0814;
+  --danger: #ef4444;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+/* A class that sets `display` would otherwise win over the hidden attribute,
+   leaving elements like the preview overlay visible on load. */
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+
+button, .button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: .35rem .7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: var(--text);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+button:hover, .button:hover { border-color: var(--line-strong); background: #262626; }
+.button.primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+
+.bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.spacer { flex: 1; }
+
+.crumbs { display: flex; overflow-x: auto; align-items: center; gap: 6px; font-size: .88rem; }
+.crumbs a { color: var(--muted); white-space: nowrap; }
+.crumbs a:hover { color: var(--text); }
+.crumbs .sep { color: var(--muted); opacity: .6; }
+.crumbs .current { color: var(--text); white-space: nowrap; }
+
+.alert {
+  margin: 12px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 68, 68, .25);
+  border-radius: 9px;
+  background: rgba(239, 68, 68, .08);
+  color: #fca5a5;
+  font-size: .84rem;
+}
+
+main { padding: 14px 18px 40px; }
+.listing { width: 100%; border-collapse: collapse; }
+.listing th {
+  padding: 0 10px 9px;
+  color: var(--muted);
+  font-size: .74rem;
+  font-weight: 500;
+  text-align: left;
+}
+.listing td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: middle; }
+.listing tr:hover td { background: var(--panel); }
+.col-size, .col-time { width: 130px; color: var(--muted); }
+.col-act { width: 150px; text-align: right; }
+.listing td.col-size, .listing td.col-time { color: var(--muted); font-size: .8rem; }
+
+.name { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.glyph {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  font-size: .72rem;
+  color: var(--muted);
+}
+.glyph.dir { color: var(--accent); }
+.row-actions { display: inline-flex; gap: 6px; }
+.row-actions button, .row-actions a { min-height: 27px; padding: .2rem .5rem; font-size: .76rem; }
+.remove:hover { border-color: rgba(239, 68, 68, .4); color: #fca5a5; }
+
+.empty { padding: 48px 0; color: var(--muted); text-align: center; }
+
+.viewer {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #000000e6;
+}
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  font-size: .88rem;
+}
+.viewer-body {
+  display: grid;
+  overflow: auto;
+  flex: 1;
+  place-items: center;
+  padding: 20px;
+}
+.viewer-body img, .viewer-body video { max-width: 100%; max-height: 100%; border-radius: 10px; }
+.viewer-body pre {
+  overflow: auto;
+  width: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 620px) {
+  .col-time { display: none; }
+  .col-size { width: 90px; }
+}

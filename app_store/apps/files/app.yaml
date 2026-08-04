@@ -1,13 +1,14 @@
 schema_version: 1
 id: files
 name: Files
-version: 1.1.0
-description: Workspace-scoped file manager
+version: 2.0.0
+description: Workspace file browser with image and video preview
 runtime:
   type: container-service
-  image: filebrowser/filebrowser:v2.32.0
-  command: ["--address", "0.0.0.0", "--port", "8081", "--root", "/workspace", "--baseurl", "/apps/files", "--database", "/database/filebrowser.db", "--noauth"]
-  internal_port: 8081
+  image: ghcr.io/matthewsawatzky/contain-yourself-files:v0.6.0
+  environment:
+    TZ: Etc/UTC
+  internal_port: 7080
 routing:
   base_path: /apps/files/
   strip_prefix: false
@@ -17,14 +18,14 @@ network:
 storage:
   - type: workspace
     target: /workspace
-  - type: app-data
-    target: /database
+    owner_uid: 10001
+    owner_gid: 10001
 resources:
-  default_memory_mb: 256
+  default_memory_mb: 128
   default_cpu: 0.25
 health:
   type: http
-  path: /apps/files/health
+  path: /apps/files/healthz
   timeout_seconds: 5
 desktop:
   visible: true

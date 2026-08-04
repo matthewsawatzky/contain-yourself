@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"workstation-manager/internal/auth"
 	"workstation-manager/internal/database"
+	"workstation-manager/pkg/workerapi"
 )
 
 // grantFixture returns a server plus a non-admin user with the given grants,
@@ -217,4 +219,67 @@ func adminSession(t *testing.T, server *Server) *http.Cookie {
 func itoa(value int64) string {
 	data, _ := json.Marshal(value)
 	return string(data)
+}
+
+// The healthy-tunnel panel cannot be reached without a live gateway, so the
+// template is rendered directly against a populated status.
+func TestWorkstationPageRendersALiveTunnel(t *testing.T) {
+	server := launcherTestServer(t)
+	var page bytes.Buffer
+	err := server.templates.ExecuteTemplate(&page, "workstation.html", pageData{
+		Title: "Research",
+		Workstation: database.Workstation{
+			ID: "ws-abc123def4", Name: "Research", State: "ready",
+			EgressMode: "wireguard", VPNRequired: true,
+		},
+		EgressLabel: "VPN (WireGuard)",
+		Egress: workerapi.EgressStatus{
+			WorkstationID: "ws-abc123def4", Mode: "wireguard",
+			Healthy: true, FailsClosed: true,
+			Tunnel: &workerapi.TunnelStatus{
+				Up: true, Endpoint: "203.0.113.10:51820",
+				HandshakeAgeSeconds: 14, ReceivedBytes: 5 << 20, SentBytes: 2 << 20,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := page.String()
+	for _, want := range []string{
+		"VPN (WireGuard)", "203.0.113.10:51820", "14s ago",
+		"5.0 MB", "2.0 MB", "Fails closed",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("panel is missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Unavailable") {
+		t.Error("a healthy tunnel was rendered as unavailable")
+	}
+}
+
+func TestWorkstationPageRendersANeverHandshakedTunnel(t *testing.T) {
+	server := launcherTestServer(t)
+	var page bytes.Buffer
+	err := server.templates.ExecuteTemplate(&page, "workstation.html", pageData{
+		Title:       "Research",
+		Workstation: database.Workstation{ID: "ws-abc123def4", Name: "Research"},
+		EgressLabel: "VPN (WireGuard)",
+		Egress: workerapi.EgressStatus{
+			Mode: "wireguard", FailsClosed: true,
+			Tunnel: &workerapi.TunnelStatus{Up: false, HandshakeAgeSeconds: -1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := page.String()
+	// -1 must read as "never", not as a negative duration.
+	if !strings.Contains(body, "never") {
+		t.Error(`a tunnel that never handshaked should render "never"`)
+	}
+	if strings.Contains(body, "-1") {
+		t.Error("the sentinel leaked into the page")
+	}
 }

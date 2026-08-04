@@ -66,6 +66,7 @@ resolve_service() {
     controller) printf 'controller' ;;
     worker|docker-worker) printf 'docker-worker' ;;
     wslan|wslan-image) printf 'wslan-image' ;;
+    files|files-image) printf 'files-image' ;;
     *) return 1 ;;
   esac
 }
@@ -79,7 +80,7 @@ resolve_service() {
 # Compose reads as "every service".
 resolve_services() {
   if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then
-    printf 'controller docker-worker wslan-image'
+    printf 'controller docker-worker wslan-image files-image'
     return 0
   fi
   resolved=""
@@ -87,7 +88,7 @@ resolve_services() {
     if service=$(resolve_service "$name"); then
       resolved="$resolved $service"
     else
-      printf 'dev: unknown service: %s (expected controller, worker, wslan, or all)\n' \
+      printf 'dev: unknown service: %s (expected controller, worker, wslan, files, or all)\n' \
         "$name" >&2
       return 1
     fi
@@ -119,7 +120,7 @@ cmd_stack() {
       compose up -d "$@"
       compose ps
       bind=$(sed -n 's/^CONTROLLER_BIND=//p' .env | tr -d '"' | head -1)
-      printf '\nController: http://%s:8080\n' "${bind:-127.0.0.1}"
+      printf '\nController: http://%s:7080\n' "${bind:-127.0.0.1}"
       ;;
     down)
       require_docker
@@ -287,7 +288,7 @@ cmd_deploy() {
   [ -f "$target/.env" ] || die "$target has no .env; is it an installation?"
 
   note "building local images tagged $LOCAL_IMAGE_REPOSITORY-*:$tag"
-  for component in controller worker wslan; do
+  for component in controller worker wslan files; do
     printf '    %s\n' "$component"
     docker build \
       -f "build/$component.Dockerfile" \
@@ -382,8 +383,8 @@ Other
   doctor                  Check the toolchain and this checkout
   help                    Show this message
 
-Services are named controller, worker, and wslan. The longer Compose names
-(docker-worker, wslan-image) are accepted too.
+Services are named controller, worker, wslan, and files. The longer Compose
+names (docker-worker, wslan-image, files-image) are accepted too.
 
 Examples
   ./dev build all

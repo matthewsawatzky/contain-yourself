@@ -122,6 +122,6 @@ After changing packages, call:
 workstationctl apps list
 workstationctl templates list
 # Administrator API:
-curl -X POST -b wm_session=... -H 'Origin: http://127.0.0.1:8080' \
-  http://127.0.0.1:8080/api/v1/admin/rescan
+curl -X POST -b wm_session=... -H 'Origin: http://127.0.0.1:7080' \
+  http://127.0.0.1:7080/api/v1/admin/rescan
 ```

@@ -7,13 +7,13 @@ services:
       dockerfile: build/controller.Dockerfile
     user: "${CONTROLLER_UID:-1000}:${CONTROLLER_GID:-1000}"
     ports:
-      - "${CONTROLLER_BIND:-127.0.0.1}:8080:8080"
+      - "${CONTROLLER_BIND:-127.0.0.1}:7080:7080"
     volumes:
       - ${DATA_DIRECTORY:-./data}:/data
       - ./core_apps:/config/apps:ro
       - ./core_templates:/config/templates
     environment:
-      CONTROLLER_LISTEN: 0.0.0.0:8080
+      CONTROLLER_LISTEN: 0.0.0.0:7080
       DATABASE_PATH: /data/controller.db
       APPS_DIRECTORY: /config/apps
       INSTALLED_APPS_DIRECTORY: /data/apps
@@ -37,7 +37,7 @@ services:
     networks:
       - management
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:7080/healthz"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -81,6 +81,14 @@ services:
     build:
       context: .
       dockerfile: build/wslan.Dockerfile
+    profiles:
+      - system-image
+
+  files-image:
+    image: "${FILES_IMAGE:-contain-yourself-files:dev}"
+    build:
+      context: .
+      dockerfile: build/files.Dockerfile
     profiles:
       - system-image
 

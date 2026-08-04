@@ -608,3 +608,23 @@ dd { margin: 0; text-align: right; }
 .grant-form .check small { font-size: .72rem; line-height: 1.4; }
 .grant-form .card-foot { margin-top: 12px; }
 .grant-form .card-foot button { min-height: 30px; padding: .3rem .7rem; font-size: .8rem; }
+
+/* Egress panel --------------------------------------------------------- */
+
+.egress { margin-bottom: 22px; }
+/* The panel follows a definition list, which otherwise butts against it. */
+dl + .eyebrow { display: block; margin-top: 24px; }
+.egress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: .8rem;
+}
+.egress-row span { color: var(--muted); }
+.egress-row b { font-weight: 500; }
+.egress-row code { font-size: .78rem; }
+.egress-row .good { color: #86efac; }
+.egress-row .bad { color: #fca5a5; }
+.egress .fine { margin: 12px 0 0; }

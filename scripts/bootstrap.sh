@@ -157,5 +157,5 @@ printf 'Project directory:\n  %s\n\n' "$project_directory"
 printf 'Nothing has been started. When you are ready:\n\n'
 printf '  cd "%s"\n' "$project_directory"
 printf '  docker compose up -d\n\n'
-printf 'Then open http://127.0.0.1:8080\n'
+printf 'Then open http://127.0.0.1:7080\n'
 printf 'Docs: https://github.com/%s/blob/main/docs/installation.md\n' "$repository"

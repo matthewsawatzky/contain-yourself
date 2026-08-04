@@ -20,7 +20,7 @@ type client struct {
 }
 
 func main() {
-	api := env("WORKSTATION_MANAGER_URL", "http://127.0.0.1:8080")
+	api := env("WORKSTATION_MANAGER_URL", "http://127.0.0.1:7080")
 	session := os.Getenv("WORKSTATION_MANAGER_SESSION")
 	args := os.Args[1:]
 	if len(args) == 0 {

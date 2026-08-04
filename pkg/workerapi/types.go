@@ -90,6 +90,43 @@ type ActionRequest struct {
 	Action string `json:"action"`
 }
 
+// EgressStatus is what a workstation's gateway reports about how its traffic is
+// actually leaving, as opposed to how it was configured to leave.
+//
+// Everything here is read from the gateway's own kernel state. Nothing contacts
+// an outside service to determine it, which matters for a workstation whose
+// point is not to be observed.
+type EgressStatus struct {
+	WorkstationID string `json:"workstation_id"`
+	// Mode is the configured egress mode the gateway is running.
+	Mode string `json:"mode"`
+	// Healthy is the gateway's own verdict. For WireGuard this is false when
+	// the tunnel is down, which is also when the gateway is refusing to
+	// forward: the mode fails closed.
+	Healthy bool `json:"healthy"`
+	// FailsClosed records whether losing the tunnel stops traffic rather than
+	// letting it fall back to the host's connection.
+	FailsClosed bool `json:"fails_closed"`
+	// Tunnel is present only for tunnelled modes.
+	Tunnel *TunnelStatus `json:"tunnel,omitempty"`
+	// Error explains why the status could not be collected, if it could not.
+	Error string `json:"error,omitempty"`
+}
+
+// TunnelStatus describes a live WireGuard tunnel. It deliberately carries no
+// key material: the gateway parses only peer records, never the interface line
+// that holds the private key.
+type TunnelStatus struct {
+	Up bool `json:"up"`
+	// Endpoint is the peer's address, which is the exit the workstation's
+	// traffic appears to come from.
+	Endpoint string `json:"endpoint,omitempty"`
+	// HandshakeAgeSeconds is -1 when a handshake has never completed.
+	HandshakeAgeSeconds int64  `json:"handshake_age_seconds"`
+	ReceivedBytes       uint64 `json:"received_bytes"`
+	SentBytes           uint64 `json:"sent_bytes"`
+}
+
 type Resource struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`

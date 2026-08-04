@@ -7,3 +7,12 @@ dist/
 coverage.out
 *.log
 .DS_Store
+
+# Binaries produced by `go build ./cmd/...` in the repository root.
+/controller
+/worker
+/wslan
+/files
+/workstationctl
+/storectl
+/vpnkeyctl

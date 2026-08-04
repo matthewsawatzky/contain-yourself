@@ -44,5 +44,5 @@ COPY --from=build /out/controller /usr/local/bin/controller
 COPY --from=build /out/workstationctl /usr/local/bin/workstationctl
 COPY --from=build /out/vpnkeyctl /usr/local/bin/vpnkeyctl
 USER workstation
-EXPOSE 8080
+EXPOSE 7080
 ENTRYPOINT ["/usr/local/bin/controller"]

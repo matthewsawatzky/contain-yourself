@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Files</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+    <span class="spacer"></span>
+    <button type="button" id="new-folder">New folder</button>
+    <label class="button" for="upload">Upload</label>
+    <input type="file" id="upload" multiple hidden>
+  </header>
+
+  <div class="alert" id="alert" hidden></div>
+
+  <main>
+    <table class="listing">
+      <thead>
+        <tr><th class="col-name">Name</th><th class="col-size">Size</th><th class="col-time">Modified</th><th class="col-act"></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="empty" id="empty" hidden>This folder is empty.</p>
+  </main>
+
+  <div class="viewer" id="viewer" hidden>
+    <div class="viewer-bar">
+      <b id="viewer-name"></b>
+      <span class="spacer"></span>
+      <a class="button" id="viewer-download" download>Download</a>
+      <button type="button" id="viewer-close">Close</button>
+    </div>
+    <div class="viewer-body" id="viewer-body"></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -82,7 +82,7 @@ performs a complete ordered stop/start so sandbox routes are restored.
 
 No Caddy, Nginx or other public proxy is bundled. A proxy should preserve
 `Host`, forward WebSocket upgrades, terminate TLS, and route both the
-controller hostname and wildcard hostname to `controller:8080`.
+controller hostname and wildcard hostname to `controller:7080`.
 
 ```text
 A/AAAA  workstations.example.com     → host

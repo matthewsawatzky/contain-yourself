@@ -1,7 +1,10 @@
 package dockerworker
 
 import (
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -281,5 +284,52 @@ func TestEmptyEgressModeFallsBackToTheLegacyFlag(t *testing.T) {
 	legacy.VPNProfile = &workerapi.VPNProfile{WireGuardConfig: integrationWireGuardConfig(t)}
 	if err := service.validateProvision(legacy); err != nil {
 		t.Fatalf("legacy vpn_required with a profile was rejected: %v", err)
+	}
+}
+
+// The gateway is not running in unit tests, so egress must degrade to a clear
+// message rather than hanging or 500ing.
+func TestEgressReportsAMissingGateway(t *testing.T) {
+	service := testService()
+	service.engine = NewEngine("/nonexistent/docker.sock")
+	request := httptest.NewRequest(http.MethodGet, "/v1/workstations/ws-abcdef1234/egress", nil)
+	request.Header.Set("Authorization", "Bearer "+service.config.Token)
+	recorder := httptest.NewRecorder()
+	service.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 with an error field", recorder.Code)
+	}
+	var status workerapi.EgressStatus
+	if err := json.Unmarshal(recorder.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Error == "" {
+		t.Fatalf("expected an explanatory error, got %+v", status)
+	}
+	if status.WorkstationID != "ws-abcdef1234" {
+		t.Fatalf("workstation id = %q", status.WorkstationID)
+	}
+}
+
+func TestEgressRejectsAnInvalidWorkstationID(t *testing.T) {
+	service := testService()
+	request := httptest.NewRequest(http.MethodGet, "/v1/workstations/not-an-id/egress", nil)
+	request.Header.Set("Authorization", "Bearer "+service.config.Token)
+	recorder := httptest.NewRecorder()
+	service.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+}
+
+// Egress names the VPN exit, so it sits behind the worker token like the rest.
+func TestEgressRequiresTheWorkerToken(t *testing.T) {
+	service := testService()
+	request := httptest.NewRequest(http.MethodGet, "/v1/workstations/ws-abcdef1234/egress", nil)
+	recorder := httptest.NewRecorder()
+	service.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", recorder.Code)
 	}
 }

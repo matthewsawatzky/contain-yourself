@@ -39,7 +39,7 @@ type Controller struct {
 
 func LoadController() (Controller, error) {
 	c := Controller{
-		Listen:                 env("CONTROLLER_LISTEN", "0.0.0.0:8080"),
+		Listen:                 env("CONTROLLER_LISTEN", "0.0.0.0:7080"),
 		DatabasePath:           env("DATABASE_PATH", "/data/controller.db"),
 		AppsDirectory:          env("APPS_DIRECTORY", "/config/apps"),
 		InstalledAppsDirectory: env("INSTALLED_APPS_DIRECTORY", "/data/apps"),

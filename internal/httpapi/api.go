@@ -79,6 +79,23 @@ func (s *Server) apiUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, usage)
 }
 
+func (s *Server) apiEgress(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), currentUser(r))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workstation not found"})
+		return
+	}
+	status, err := s.worker.Egress(r.Context(), ws.ID)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	if status.Mode == "" {
+		status.Mode = string(egress.Resolve(ws.EgressMode, ws.VPNRequired))
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
 func (s *Server) apiLogs(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.db.Workstation(r.Context(), r.PathValue("id"), currentUser(r))
 	if err != nil {

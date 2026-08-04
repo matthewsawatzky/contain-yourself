@@ -121,10 +121,22 @@ func (s *Server) renderWorkstation(w http.ResponseWriter, r *http.Request, ws da
 	usageContext, cancel := context.WithTimeout(r.Context(), 4*time.Second)
 	usage, _ := s.worker.Usage(usageContext, ws.ID)
 	cancel()
+	egressContext, cancelEgress := context.WithTimeout(r.Context(), 6*time.Second)
+	status, err := s.worker.Egress(egressContext, ws.ID)
+	cancelEgress()
+	if err != nil {
+		status = workerapi.EgressStatus{WorkstationID: ws.ID, Error: err.Error()}
+	}
+	// Fall back to the configured mode so the panel still says something
+	// truthful when the gateway is down.
+	if status.Mode == "" {
+		status.Mode = string(egress.Resolve(ws.EgressMode, ws.VPNRequired))
+	}
 	user := currentUser(r)
 	s.render(w, "workstation.html", pageData{
 		Title: ws.Name, User: &user, Workstation: ws, Events: events,
 		Shares: shares, ShareURL: shareURL, Usage: usage.Resources,
+		Egress: status, EgressLabel: egress.Mode(status.Mode).Label(),
 		Theme: s.resolveTheme(r, ws.AccentColor), Presets: theme.Presets,
 	})
 }

@@ -61,6 +61,7 @@ func (s *Service) Handler() http.Handler {
 	mux.Handle("GET /v1/resources", s.auth(http.HandlerFunc(s.list)))
 	mux.Handle("GET /v1/workstations/{id}", s.auth(http.HandlerFunc(s.inspect)))
 	mux.Handle("GET /v1/workstations/{id}/usage", s.auth(http.HandlerFunc(s.usage)))
+	mux.Handle("GET /v1/workstations/{id}/egress", s.auth(http.HandlerFunc(s.egress)))
 	mux.Handle("GET /v1/workstations/{id}/apps/{app}/logs", s.auth(http.HandlerFunc(s.logs)))
 	mux.Handle("POST /v1/workstations", s.auth(http.HandlerFunc(s.provision)))
 	mux.Handle("POST /v1/workstations/{id}/rebuild", s.auth(http.HandlerFunc(s.rebuild)))
@@ -173,6 +174,53 @@ func (s *Service) usage(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Resources = append(result.Resources, item)
 	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// egress asks a workstation's own gateway how its traffic is actually leaving.
+// The gateway reads this from local kernel state, so answering does not send
+// anything outside the workstation.
+func (s *Service) egress(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !resourceID.MatchString(id) {
+		writeJSON(w, http.StatusBadRequest, workerapi.Error{Error: "invalid workstation id"})
+		return
+	}
+	result := workerapi.EgressStatus{WorkstationID: id}
+	gateway := name(id, "wslan")
+	running, _, _, err := s.engine.ContainerState(r.Context(), gateway)
+	if err != nil || !running {
+		result.Error = "workstation gateway is not running"
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("http://%s:%d/status", gateway, wslanIngressPort), nil)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, workerapi.Error{Error: err.Error()})
+		return
+	}
+	request.Header.Set("X-Contain-WSLAN-Token", s.config.Token)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	if err != nil {
+		result.Error = "gateway did not answer: " + err.Error()
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		result.Error = "gateway returned " + response.Status
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<16)).Decode(&result); err != nil {
+		result.Error = "gateway sent an unreadable status"
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	result.WorkstationID = id
 	writeJSON(w, http.StatusOK, result)
 }
 

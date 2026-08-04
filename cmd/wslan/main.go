@@ -18,11 +18,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"workstation-manager/pkg/workerapi"
 )
 
 const (
 	tokenHeader = "X-Contain-WSLAN-Token"
 	appHeader   = "X-Contain-WSLAN-App"
+	// handshakeMaxAge matches WireGuard's own idea of a live session: peers
+	// rehandshake well inside this, so anything older means the tunnel is dead.
+	handshakeMaxAge = 180
 )
 
 type gateway struct {
@@ -65,6 +70,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", g.health)
+	mux.HandleFunc("GET /status", g.status)
 	mux.HandleFunc("/", g.proxy)
 	server := &http.Server{
 		Addr:              env("WSLAN_LISTEN", "0.0.0.0:9000"),
@@ -138,6 +144,88 @@ func (g *gateway) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "mode": g.mode})
 }
 
+// status reports how traffic is actually leaving this workstation. It is
+// authenticated with the same token as the proxy: the answer names the VPN exit,
+// which is not something to hand out unauthenticated.
+func (g *gateway) status(w http.ResponseWriter, r *http.Request) {
+	if !g.authorized(r) {
+		http.Error(w, "invalid WSLAN token", http.StatusUnauthorized)
+		return
+	}
+	result := workerapi.EgressStatus{
+		Mode: g.mode,
+		// Only the tunnelled mode stops traffic when its path dies; the direct
+		// modes have nothing to fail closed to.
+		FailsClosed: g.mode == "wireguard",
+	}
+	if g.mode != "wireguard" {
+		result.Healthy = true
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	output, err := exec.Command("wg", "show", "wg0", "dump").Output()
+	if err != nil {
+		result.Error = "WireGuard interface is unavailable"
+		result.Tunnel = &workerapi.TunnelStatus{HandshakeAgeSeconds: -1}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	tunnel := parseWireGuardDump(string(output), time.Now().Unix())
+	result.Tunnel = &tunnel
+	result.Healthy = tunnel.Up
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (g *gateway) authorized(r *http.Request) bool {
+	provided := r.Header.Get(tokenHeader)
+	return len(provided) == len(g.token) &&
+		subtle.ConstantTimeCompare([]byte(provided), []byte(g.token)) == 1
+}
+
+// parseWireGuardDump reads `wg show <iface> dump`.
+//
+// The first line of that output describes the interface and its second field is
+// the PRIVATE KEY. It is skipped without being examined, and only peer lines are
+// read, so no key material can reach a response. Peer fields are:
+//
+//	public-key preshared-key endpoint allowed-ips latest-handshake rx tx keepalive
+func parseWireGuardDump(output string, now int64) workerapi.TunnelStatus {
+	tunnel := workerapi.TunnelStatus{HandshakeAgeSeconds: -1}
+	for index, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if index == 0 {
+			// Interface line: contains the private key. Never parsed.
+			continue
+		}
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) < 7 {
+			continue
+		}
+		if endpoint := fields[2]; endpoint != "" && endpoint != "(none)" {
+			tunnel.Endpoint = endpoint
+		}
+		if handshake, err := strconv.ParseInt(fields[4], 10, 64); err == nil && handshake > 0 {
+			age := now - handshake
+			if age < 0 {
+				age = 0
+			}
+			// Keep the freshest peer, which is the one carrying traffic.
+			if tunnel.HandshakeAgeSeconds < 0 || age < tunnel.HandshakeAgeSeconds {
+				tunnel.HandshakeAgeSeconds = age
+			}
+		}
+		if received, err := strconv.ParseUint(fields[5], 10, 64); err == nil {
+			tunnel.ReceivedBytes += received
+		}
+		if sent, err := strconv.ParseUint(fields[6], 10, 64); err == nil {
+			tunnel.SentBytes += sent
+		}
+	}
+	// The interface exists, so the tunnel is up once a handshake has completed
+	// recently enough that the peer still considers the session live.
+	tunnel.Up = tunnel.HandshakeAgeSeconds >= 0 && tunnel.HandshakeAgeSeconds <= handshakeMaxAge
+	return tunnel
+}
+
 func recentHandshake() bool {
 	internalIP := net.ParseIP(os.Getenv("WSLAN_INTERNAL_ADDRESS"))
 	if internalIP == nil {
@@ -164,7 +252,7 @@ func hasRecentHandshake(output string, now int64) bool {
 			continue
 		}
 		latest, parseErr := strconv.ParseInt(fields[1], 10, 64)
-		if parseErr == nil && latest > 0 && now-latest <= 180 {
+		if parseErr == nil && latest > 0 && now-latest <= handshakeMaxAge {
 			return true
 		}
 	}
@@ -172,9 +260,7 @@ func hasRecentHandshake(output string, now int64) bool {
 }
 
 func (g *gateway) proxy(w http.ResponseWriter, r *http.Request) {
-	provided := r.Header.Get(tokenHeader)
-	if len(provided) != len(g.token) ||
-		subtle.ConstantTimeCompare([]byte(provided), []byte(g.token)) != 1 {
+	if !g.authorized(r) {
 		http.Error(w, "invalid WSLAN token", http.StatusUnauthorized)
 		return
 	}

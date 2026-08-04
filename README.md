@@ -15,7 +15,7 @@ browser ──HTTP──> controller ──narrow API──> docker-worker ─�
 ```
 
 No reverse proxy is bundled. The default URL is
-<http://127.0.0.1:8080>.
+<http://127.0.0.1:7080>.
 
 ## Quick installation
 
@@ -46,7 +46,7 @@ Compose fetches the exact tagged controller, worker, and WSLAN images from
 GitHub Container Registry. All persistent files remain in the directory you
 created.
 
-Open <http://127.0.0.1:8080> and create the initial administrator. The
+Open <http://127.0.0.1:7080> and create the initial administrator. The
 Terminal and Private workstation templates can be used immediately. Install
 optional Browser, Code, and Files applications from **App store**. Before
 launching a Private workstation, open **VPN profiles** and paste a WireGuard
@@ -93,7 +93,7 @@ To build without starting:
 specific single-platform development build is needed.
 
 The worker is not published to the host. The controller has no Docker socket
-mount. Do not expose port 8080 directly to an untrusted network; put a TLS
+mount. Do not expose port 7080 directly to an untrusted network; put a TLS
 reverse proxy, Tailscale, or another authenticated private access layer in
 front, then set `SECURE_COOKIES=true`.
 
@@ -118,7 +118,8 @@ front, then set `SECURE_COOKIES=true`.
   operator-supplied keys, and offline key rotation
 - administrator-created user accounts and global profiles visible to new users
 - core desktop and terminal definitions plus installable Browser, Code, and
-  Files packages
+  Files packages, the last a purpose-built workspace browser with confined
+  paths and image, video, and text preview
 - editable UI-managed template presets that can select any installed app,
   choose an egress mode, and seed the workspace from a chosen image
 - bounded persistent app and WSLAN logs under `data/workstation-logs/`
@@ -127,6 +128,8 @@ front, then set `SECURE_COOKIES=true`.
   terminal/app/file/lifecycle permissions
 - worker-backed CPU, memory, PID, network and block-I/O samples plus bounded
   per-app logs
+- per-workstation egress status: live tunnel state, handshake age, and exit
+  peer, read from the gateway's own kernel state without contacting anything
 - controlled app updates that pull approved images before replacing containers
   while preserving labelled volumes
 - non-root volume ownership initialization, reviewed app environment variables,
@@ -162,6 +165,7 @@ workstationctl reconcile
 - [Theming and accent colours](docs/theming.md)
 - [Networking and reverse proxies](docs/networking.md)
 - [Egress modes](docs/egress.md)
+- [Egress status](docs/egress-status.md)
 - [VPN profiles and multi-user access](docs/vpn-profiles.md)
 - [VPN profile encryption key](docs/vpn-encryption-key.md)
 - [Authentication](docs/authentication.md)

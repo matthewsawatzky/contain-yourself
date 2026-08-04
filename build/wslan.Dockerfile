@@ -6,6 +6,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 ARG TARGETOS
 ARG TARGETARCH
 COPY cmd/wslan ./cmd/wslan
+COPY pkg ./pkg
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \

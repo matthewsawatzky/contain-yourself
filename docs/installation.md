@@ -41,7 +41,7 @@ Compose downloads the exact tagged controller, worker, and WSLAN images from
 GHCR. The prebuilt images cover `linux/amd64` and `linux/arm64`, including the
 Linux container environments used by Intel and Apple Silicon Docker Desktop.
 
-Open <http://127.0.0.1:8080> and create the first administrator.
+Open <http://127.0.0.1:7080> and create the first administrator.
 
 ## Manual download
 
@@ -115,7 +115,7 @@ docker compose up -d
 docker compose exec controller workstationctl backup
 ```
 
-No application or controller port other than `127.0.0.1:8080` is published by
+No application or controller port other than `127.0.0.1:7080` is published by
 default.
 
 ## Upgrade

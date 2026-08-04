@@ -5,13 +5,13 @@ services:
     image: "${WM_IMAGE_REPOSITORY:?set WM_IMAGE_REPOSITORY}-controller:${WM_VERSION:?set WM_VERSION}"
     user: "${CONTROLLER_UID:?set CONTROLLER_UID}:${CONTROLLER_GID:?set CONTROLLER_GID}"
     ports:
-      - "${CONTROLLER_BIND:-127.0.0.1}:8080:8080"
+      - "${CONTROLLER_BIND:-127.0.0.1}:7080:7080"
     volumes:
       - ${DATA_DIRECTORY:?set DATA_DIRECTORY}:/data
       - ${CONFIG_DIRECTORY:?set CONFIG_DIRECTORY}/apps:/config/apps:ro
       - ${CONFIG_DIRECTORY:?set CONFIG_DIRECTORY}/templates:/config/templates
     environment:
-      CONTROLLER_LISTEN: 0.0.0.0:8080
+      CONTROLLER_LISTEN: 0.0.0.0:7080
       DATABASE_PATH: /data/controller.db
       APPS_DIRECTORY: /config/apps
       INSTALLED_APPS_DIRECTORY: /data/apps
@@ -35,7 +35,7 @@ services:
     networks:
       - management
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:7080/healthz"]
       interval: 10s
       timeout: 3s
       retries: 10

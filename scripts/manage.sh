@@ -30,7 +30,7 @@ case "${1:-help}" in
   start)
     dc pull --policy missing
     dc up -d
-    printf 'Workstation Manager: http://%s:8080\n' "${CONTROLLER_BIND:-127.0.0.1}"
+    printf 'Workstation Manager: http://%s:7080\n' "${CONTROLLER_BIND:-127.0.0.1}"
     ;;
   stop)
     dc stop

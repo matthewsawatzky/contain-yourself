@@ -72,6 +72,8 @@ type pageData struct {
 	StoreApps             []appstore.AppView
 	StoreStatus           appstore.SyncStatus
 	EgressModes           []egressChoice
+	Egress                workerapi.EgressStatus
+	EgressLabel           string
 	DefaultWorkspaceImage string
 	Theme                 theme.Palette
 	Presets               []theme.Preset
@@ -141,6 +143,30 @@ func New(cfg config.Controller, db *database.DB, worker *workerclient.Client, lo
 		},
 		// hasEgress lets the users page render a checked box per granted mode
 		// without the template needing to know how grants are encoded.
+		// handshakeAge renders -1 as "never" rather than a negative duration.
+		"handshakeAge": func(seconds int64) string {
+			switch {
+			case seconds < 0:
+				return "never"
+			case seconds < 60:
+				return fmt.Sprintf("%ds ago", seconds)
+			case seconds < 3600:
+				return fmt.Sprintf("%dm ago", seconds/60)
+			}
+			return fmt.Sprintf("%dh ago", seconds/3600)
+		},
+		"bytesHuman": func(value uint64) string {
+			const unit = 1024
+			if value < unit {
+				return fmt.Sprintf("%d B", value)
+			}
+			div, exponent := int64(unit), 0
+			for n := value / unit; n >= unit; n /= unit {
+				div *= unit
+				exponent++
+			}
+			return fmt.Sprintf("%.1f %cB", float64(value)/float64(div), "KMGTPE"[exponent])
+		},
 		"hasEgress": func(encoded, mode string) bool {
 			for _, granted := range egress.ParseGrants(encoded) {
 				if string(granted) == mode {
@@ -247,6 +273,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/workstations/{id}", s.requireUser(http.HandlerFunc(s.apiWorkstation)))
 	mux.Handle("POST /api/v1/workstations/{id}/actions/{action}", s.requireUser(http.HandlerFunc(s.apiWorkstationAction)))
 	mux.Handle("GET /api/v1/workstations/{id}/usage", s.requireUser(http.HandlerFunc(s.apiUsage)))
+	mux.Handle("GET /api/v1/workstations/{id}/egress", s.requireUser(http.HandlerFunc(s.apiEgress)))
 	mux.Handle("GET /api/v1/workstations/{id}/apps/{app}/logs", s.requireUser(http.HandlerFunc(s.apiLogs)))
 	mux.Handle("GET /api/v1/workstations/{id}/shares", s.requireUser(http.HandlerFunc(s.apiShares)))
 	mux.Handle("POST /api/v1/workstations/{id}/shares", s.requireUser(http.HandlerFunc(s.apiCreateShare)))
