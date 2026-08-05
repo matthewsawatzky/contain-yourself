@@ -92,8 +92,14 @@ func TestWSLANGatewayIntegration(t *testing.T) {
 	if err := engine.ContainerAction(ctx, sandboxName, "start"); err != nil {
 		t.Fatal(err)
 	}
+	// The wslan image's Alpine busybox is built without the httpd applet, so
+	// the stub app uses the upstream busybox image instead, which has it.
+	busyboxImage := envForTest("WSLAN_TEST_BUSYBOX_IMAGE", "busybox:1.37.0")
+	if err := engine.EnsureImage(ctx, busyboxImage); err != nil {
+		t.Fatalf("pull %s: %v", busyboxImage, err)
+	}
 	if err := engine.CreateContainer(ctx, ContainerConfig{
-		Name: appName, Image: envForTest("WSLAN_TEST_IMAGE", "contain-yourself-wslan:dev"),
+		Name: appName, Image: busyboxImage,
 		Entrypoint: []string{"sh"},
 		Command: []string{"-c",
 			"mkdir -p /tmp/www && echo ok >/tmp/www/healthz && exec httpd -f -p 3000 -h /tmp/www"},

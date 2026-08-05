@@ -95,9 +95,23 @@ database and an upgrade fixture. Never edit a released migration.
 2. Pin a version tag or digest.
 3. Run `make store` to generate hashes and the compact index.
 4. Add manifest rejection and Docker integration tests.
-5. Verify base-path behavior, WebSockets, health, shared workspace and VPN
-   egress before enabling it.
+5. Run `./dev app test <id>` (needs Docker). It provisions the app through the
+   real WSLAN gateway and per-app network sandbox with its actual image,
+   command and environment -- the same topology the worker uses in
+   production -- and checks the declared health path through WSLAN ingress.
+   A pass is evidence the base path, `strip_prefix`, health path and shared
+   workspace mount are all consistent, without needing a full stack or a
+   manual walkthrough.
 6. Run `make store-check` and follow the contribution checklist.
+
+`./dev app test` with no ID runs every container-service app in `core_apps/`
+and `app_store/apps/`. `./dev app interop` checks the WSLAN property the whole
+catalog depends on: two unmodified apps sharing a network (as a template
+combining several apps does) route correctly through the gateway even when
+they share an internal port, and can reach each other directly by DNS alias
+with neither one aware the other exists. Neither command modifies an app's
+image or manifest to make it pass -- if it needs that, the app or WSLAN itself
+has a bug worth filing.
 
 Only Desktop and Terminal belong in `core_apps/`. Store installation creates a
 persistent worker approval for the complete validated app specification;
@@ -105,15 +119,22 @@ community images do not need to be added to the static core allowlist.
 
 ## Adding a template
 
-Add core presets to `core_templates/<id>.yaml`. Optional examples may live in
-`example_templates/`. Only select valid registered apps. Resource defaults
-must fit the host and every app's individual limits must fit the workstation.
+Add core presets to `core_templates/<id>.yaml`. A core template loads before
+any store app is installed, so it can only select apps in `core_apps/`
+(currently `terminal` and `web-desktop`). A template that combines store
+apps -- the common case, since most useful combinations pull in `browser`,
+`code`, or `files` -- belongs in `example_templates/` instead, alongside the
+existing `browser.yaml` and `developer.yaml`. Either way, only select valid
+registered apps; resource defaults must fit the host and every app's
+individual limits must fit the workstation.
 
 ## Test tiers
 
 - Unit: manifests, templates, state, sessions, shares, hostname, log decoding
   and worker validation.
-- Docker integration: pull/provision/health/proxy/persistence/kill switch.
+- Docker integration: pull/provision/health/proxy/persistence/kill switch, plus
+  `./dev app test [id]` and `./dev app interop` for the WSLAN/app boundary
+  specifically (see "Adding an app" above).
 - End to end: setup, create, app interaction, stop/start, share and delete.
 
 Docker tests should use a separate daemon or uniquely labelled resources and

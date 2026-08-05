@@ -92,7 +92,7 @@
       },
       "bundle": {
         "path": "apps/files/bundle.json",
-        "sha256": "8873ee8c0a6758a14281ad220ee772167f1057bde732f88887f30fd37a2dae72",
+        "sha256": "33ba0bed8932c6850e548cd80477eeb98c316d1f36b2bc25bec8dd6e9ce2f2bd",
         "size_bytes": 1779
       }
     }

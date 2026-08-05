@@ -93,3 +93,16 @@ Set `PUBLIC_BASE_DOMAIN=workstations.example.com` and
 `SECURE_COOKIES=true`. The default loopback binding is suitable for a proxy on
 the same host. Direct LAN access requires `CONTROLLER_BIND=0.0.0.0` and
 appropriate firewall rules.
+
+## Testing
+
+An app image needs no WSLAN-specific code: it just listens on its declared
+`internal_port` and, if `strip_prefix` is false, serves under its declared
+`base_path`. `./dev app test <id>` (see
+[development.md](development.md#adding-an-app)) provisions one app through the
+exact gateway-plus-sandbox topology described above, using the app's real
+image, and checks its declared health path through WSLAN ingress -- the same
+way the worker does at provision time. `./dev app interop` checks the
+multi-app case directly: two unmodified apps sharing one workstation network,
+including sharing an internal port, still route correctly by app ID and can
+reach each other by DNS alias with neither one aware the other exists.

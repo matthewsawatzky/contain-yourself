@@ -32,7 +32,11 @@ The pull request must explain:
 - what persistent storage it requests;
 - why every capability or environment variable is necessary;
 - the upstream image source and license;
-- how a reviewer can perform a basic health and launch test.
+- how a reviewer can perform a basic health and launch test, or note that
+  `./dev app test <id>` (see [development.md](../../docs/development.md))
+  covers it: it provisions the app through the real WSLAN gateway and
+  per-app sandbox with the app's actual image and checks the declared
+  health path, the same way the worker does in production.
 
 ## Acceptance policy
 

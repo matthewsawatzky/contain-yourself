@@ -181,6 +181,46 @@ cmd_stack() {
   esac
 }
 
+# -------------------------------------------------------------- app ----
+
+# cmd_app drives the WSLAN catalog integration tests in
+# internal/dockerworker/appcatalog_integration_test.go. They are real Docker
+# tests (build a network, gateway, per-app sandbox and the app's actual
+# image), gated behind DOCKER_INTEGRATION=1 like the rest of that tier, so
+# this wrapper exists mainly to save contributors from remembering the go
+# test invocation and to build the WSLAN image first.
+cmd_app() {
+  action=${1:-help}
+  [ "$#" -gt 0 ] && shift
+  case "$action" in
+    test)
+      require_docker
+      cmd_build wslan
+      if [ "$#" -eq 0 ]; then
+        note "running the WSLAN smoke test for every app in core_apps/ and app_store/apps/"
+        DOCKER_INTEGRATION=1 go test ./internal/dockerworker -run TestAppCatalogSmokeIntegration -v
+      else
+        note "running the WSLAN smoke test for: $*"
+        pattern=$(printf '%s\n' "$@" | paste -sd '|' -)
+        DOCKER_INTEGRATION=1 go test ./internal/dockerworker \
+          -run "TestAppCatalogSmokeIntegration/^($pattern)\$" -v
+      fi
+      ;;
+    interop)
+      require_docker
+      cmd_build wslan
+      note "checking that unmodified apps on one WSLAN network can reach each other"
+      DOCKER_INTEGRATION=1 go test ./internal/dockerworker -run TestWSLANMultiAppInteropIntegration -v
+      ;;
+    help|-h|--help)
+      printf 'Usage: ./dev app {test [APP_ID...]|interop}\n'
+      ;;
+    *)
+      die "unknown app command: $action (run ./dev app help)"
+      ;;
+  esac
+}
+
 # ------------------------------------------------------ quality gates ----
 
 cmd_fmt() {
@@ -369,6 +409,13 @@ Build and run from this checkout
   stack reset             Delete local containers, volumes, and ./data
   stack config            Print the resolved Compose configuration
 
+Test an app against the real WSLAN topology (needs Docker)
+  app test [APP_ID...]    Smoke test one, several, or (with no argument) every
+                          app in core_apps/ and app_store/apps/: real image,
+                          real gateway + sandbox, real health check
+  app interop             Check that two unmodified apps sharing a WSLAN
+                          network can reach each other with no image changes
+
 Before committing
   check                   Run everything CI runs (fmt, vet, race tests, store, compose)
   test [packages...]      go test -race (default: ./...)
@@ -401,6 +448,7 @@ command=${1:-help}
 case "$command" in
   build) cmd_build "$@" ;;
   stack) cmd_stack "$@" ;;
+  app) cmd_app "$@" ;;
   check) cmd_check "$@" ;;
   test) cmd_test "$@" ;;
   fmt) cmd_fmt "$@" ;;

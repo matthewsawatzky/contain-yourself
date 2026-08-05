@@ -69,9 +69,7 @@ func main() {
 		},
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", g.health)
-	mux.HandleFunc("GET /status", g.status)
-	mux.HandleFunc("/", g.proxy)
+	mux.HandleFunc("/", g.route)
 	server := &http.Server{
 		Addr:              env("WSLAN_LISTEN", "0.0.0.0:9000"),
 		Handler:           mux,
@@ -124,6 +122,27 @@ func validID(value string) bool {
 		}
 	}
 	return true
+}
+
+// route separates the gateway's own two endpoints from proxied app traffic.
+// /healthz and /status are plain paths, and an app is free to serve a path by
+// either of those names itself -- ttyd's /status or a health check at
+// /healthz are unremarkable choices. A request carrying the app header is
+// always meant for that app, no matter what its path happens to be; only a
+// request with no app header can be the worker or controller asking about
+// the gateway itself, so only that case is handled locally.
+func (g *gateway) route(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get(appHeader) == "" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			g.health(w, r)
+			return
+		case r.Method == http.MethodGet && r.URL.Path == "/status":
+			g.status(w, r)
+			return
+		}
+	}
+	g.proxy(w, r)
 }
 
 func (g *gateway) health(w http.ResponseWriter, _ *http.Request) {

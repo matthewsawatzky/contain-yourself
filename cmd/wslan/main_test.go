@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -114,6 +115,57 @@ func TestParseWireGuardDumpToleratesJunk(t *testing.T) {
 		if tunnel.Up {
 			t.Errorf("input %q produced an up tunnel", input)
 		}
+	}
+}
+
+// An app is free to serve its own /healthz or /status path -- ttyd's own
+// /status, a container's own /healthz -- and a proxied request for either
+// must still reach the app rather than being swallowed by the gateway's own
+// same-named endpoints.
+func TestRouteSendsAppRequestsForHealthzAndStatusToTheApp(t *testing.T) {
+	var proxied []string
+	g := &gateway{
+		token: "abcdefghijklmnopqrstuvwxyz012345", mode: "direct",
+		apps: map[string]int{"code": 8082}, client: &http.Transport{}, log: slog.Default(),
+	}
+
+	for _, path := range []string{"/healthz", "/status"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set(tokenHeader, g.token)
+		request.Header.Set(appHeader, "code")
+		recorder := httptest.NewRecorder()
+		g.route(recorder, request)
+		// An app with no real upstream fails at the reverse proxy dial, which is
+		// still proof the request was routed to app "code" and not answered
+		// locally by g.health/g.status: those never touch g.apps or dial out.
+		if recorder.Code == http.StatusOK {
+			t.Fatalf("path %s with an app header appears to have been answered by the gateway itself", path)
+		}
+		proxied = append(proxied, path)
+	}
+	if len(proxied) != 2 {
+		t.Fatalf("expected both paths to be routed toward the app, got %v", proxied)
+	}
+}
+
+// Without an app header, /healthz and /status stay gateway-local: that is how
+// the worker checks the gateway itself, with no app in play.
+func TestRouteKeepsHealthzAndStatusLocalWithNoAppHeader(t *testing.T) {
+	g := &gateway{token: "abcdefghijklmnopqrstuvwxyz012345", mode: "direct", apps: map[string]int{}}
+
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	recorder := httptest.NewRecorder()
+	g.route(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unauthenticated /healthz with no app header = %d, want 200", recorder.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/status", nil)
+	request.Header.Set(tokenHeader, g.token)
+	recorder = httptest.NewRecorder()
+	g.route(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("authenticated /status with no app header = %d, want 200", recorder.Code)
 	}
 }
 

@@ -34,17 +34,17 @@
   "icon": "icon.svg",
   "screenshots": [],
   "package": {
-    "payload_sha256": "c16c3ed1607f63fd8c91b9d39cb1130276adc650059d725141a636ef56d1ae8e",
+    "payload_sha256": "d84a2d0f90e15448026b743370e3977aafe63b79b7015943891250b4b03a9f89",
     "payload_size_bytes": 2178,
     "files": [
       {
         "path": "README.md",
-        "sha256": "62d23b9269ec8e8844e85f41c5f48d043679dc165da57eec13a0dc4866bbe181",
+        "sha256": "307ffaf4570760840230b48f8e47be537a061f82a8a7005f012373e4a7dd901e",
         "size_bytes": 1302
       },
       {
         "path": "app.yaml",
-        "sha256": "dd2819021f7f9e084475692d9c2c179a0129fc6242b8daa6366d5febf18fc411",
+        "sha256": "4765775c52b86c41585c6267c610eab7683f8a7328f7af04418385fa0e493e36",
         "size_bytes": 704
       },
       {
